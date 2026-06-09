@@ -1,0 +1,80 @@
+name: Publish
+
+# Trigger: create a GitHub release. The tag name becomes the package version.
+# NuGet Trusted Publishing must be configured on nuget.org for both packages
+# before this workflow will succeed (no stored API key required).
+# See: https://learn.microsoft.com/nuget/nuget-org/publish-a-package#publishing-with-oidc
+
+"on":
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Pack & Push to NuGet.org
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for NuGet Trusted Publishing (OIDC)
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore ApiQueryOptions.slnx
+
+      - name: Build
+        run: dotnet build ApiQueryOptions.slnx --no-restore --configuration Release /warnaserror
+
+      - name: Test
+        run: |
+          dotnet run --project tests/ApiQueryOptions.Tests/ApiQueryOptions.Tests.csproj --configuration Release
+          dotnet run --project tests/ApiQueryOptions.EntityFrameworkCore.Tests/ApiQueryOptions.EntityFrameworkCore.Tests.csproj --configuration Release
+
+      # Strip a leading 'v' from the tag so '1.2.3' and 'v1.2.3' both produce '1.2.3'.
+      - name: Resolve package version
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          echo "value=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Pack ApiQueryOptions
+        run: >
+          dotnet pack src/ApiQueryOptions/ApiQueryOptions.csproj
+          --no-build
+          --configuration Release
+          -p:PackageVersion=${{ steps.version.outputs.value }}
+          --output ./nupkg
+
+      - name: Pack ApiQueryOptions.EntityFrameworkCore
+        run: >
+          dotnet pack src/ApiQueryOptions.EntityFrameworkCore/ApiQueryOptions.EntityFrameworkCore.csproj
+          --no-build
+          --configuration Release
+          -p:PackageVersion=${{ steps.version.outputs.value }}
+          --output ./nupkg
+
+      # Exchange the GitHub Actions OIDC token for a short-lived NuGet API key
+      # via the official NuGet/login action, then push both packages.
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

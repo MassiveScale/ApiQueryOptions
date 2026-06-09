@@ -1,0 +1,673 @@
+{
+  "info": {
+    "name": "ApiQueryOptions Examples",
+    "description": "Exercises all query parameters supported by the ApiQueryOptions library against both example PetShop APIs.\n\n**Variables** (edit in the collection → Variables tab):\n- `petshop_url` — base URL for PetShop.Api (in-memory)\n- `petshop_efcore_url` — base URL for PetShop.Api.EFCore\n\nDefault ports match `launchSettings.json` HTTP profiles.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "petshop_url",
+      "value": "http://localhost:59544",
+      "type": "string"
+    },
+    {
+      "key": "petshop_efcore_url",
+      "value": "http://localhost:59543",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "PetShop.Api — In-Memory",
+      "description": "Runs against `examples/PetShop.Api`. No database required — all data lives in a static in-memory list.\n\nStart with: `cd examples/PetShop.Api && dotnet run`",
+      "item": [
+        {
+          "name": "Get all pets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"]
+            },
+            "description": "Returns all 10 pets with no filtering, ordering, or paging applied."
+          }
+        },
+        {
+          "name": "Get single pet by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets/1",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets", "1"]
+            },
+            "description": "Returns the pet whose Id = 1 (Buddy the Labrador)."
+          }
+        },
+        {
+          "name": "Get pet by ID — not found",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets/999",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets", "999"]
+            },
+            "description": "Returns 404 when no pet with the given ID exists."
+          }
+        },
+        {
+          "name": "$filter — available dogs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=Species eq 'Dog' and IsAvailable eq true",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species eq 'Dog' and IsAvailable eq true"
+                }
+              ]
+            },
+            "description": "Uses `eq` and `and` operators. Expects Buddy, Charlie, and Bella."
+          }
+        },
+        {
+          "name": "$filter — exclude cats (ne)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=Species ne 'Cat'",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species ne 'Cat'"
+                }
+              ]
+            },
+            "description": "Uses `ne` (not-equal) operator. Returns all non-cat pets."
+          }
+        },
+        {
+          "name": "$filter — adoption fee range (ge / le)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=AdoptionFee ge 50 and AdoptionFee le 150",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "AdoptionFee ge 50 and AdoptionFee le 150"
+                }
+              ]
+            },
+            "description": "Uses `ge` (>=) and `le` (<=) with an `and` logical. Returns pets with an adoption fee between $50 and $150 inclusive."
+          }
+        },
+        {
+          "name": "$filter — contains() string function",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=contains(Name, 'buddy')",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "contains(Name, 'buddy')"
+                }
+              ]
+            },
+            "description": "String function `contains()`. Case-insensitive by default — matches \"Buddy\"."
+          }
+        },
+        {
+          "name": "$filter — startswith() string function",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=startswith(Breed, 'Golden')",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "startswith(Breed, 'Golden')"
+                }
+              ]
+            },
+            "description": "String function `startswith()`. Matches Bella (Golden Retriever)."
+          }
+        },
+        {
+          "name": "$filter — endswith() string function",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=endswith(Name, 'y')",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "endswith(Name, 'y')"
+                }
+              ]
+            },
+            "description": "String function `endswith()`. Matches Buddy, Goldie, Tweety, and Nemo... let's see! (Buddy, Tweety, Goldie end with 'y')."
+          }
+        },
+        {
+          "name": "$filter — or operator",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=Species eq 'Bird' or Species eq 'Fish'",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species eq 'Bird' or Species eq 'Fish'"
+                }
+              ]
+            },
+            "description": "Uses the `or` logical operator. Returns Goldie, Tweety, and Nemo."
+          }
+        },
+        {
+          "name": "$filter — gt / lt operators",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=AgeInMonths gt 24 and AdoptionFee lt 100",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "AgeInMonths gt 24 and AdoptionFee lt 100"
+                }
+              ]
+            },
+            "description": "Uses `gt` (>) and `lt` (<) operators. Older pets with a lower adoption fee."
+          }
+        },
+        {
+          "name": "$orderby — adoption fee ascending",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$orderby=AdoptionFee asc",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$orderby",
+                  "value": "AdoptionFee asc"
+                }
+              ]
+            },
+            "description": "Sorts by AdoptionFee ascending. Cheapest pets first."
+          }
+        },
+        {
+          "name": "$orderby — age descending",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$orderby=AgeInMonths desc",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$orderby",
+                  "value": "AgeInMonths desc"
+                }
+              ]
+            },
+            "description": "Sorts by AgeInMonths descending. Oldest pets first."
+          }
+        },
+        {
+          "name": "$top + $skip — page 1 (records 1–3)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$top=3&$skip=0&$orderby=Name asc",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$top",
+                  "value": "3"
+                },
+                {
+                  "key": "$skip",
+                  "value": "0"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "Name asc"
+                }
+              ]
+            },
+            "description": "Offset paging — first page of 3 results ordered alphabetically by name."
+          }
+        },
+        {
+          "name": "$top + $skip — page 2 (records 4–6)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$top=3&$skip=3&$orderby=Name asc",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$top",
+                  "value": "3"
+                },
+                {
+                  "key": "$skip",
+                  "value": "3"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "Name asc"
+                }
+              ]
+            },
+            "description": "Offset paging — second page of 3 results."
+          }
+        },
+        {
+          "name": "$top + $skip — page 3 (records 7–9)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$top=3&$skip=6&$orderby=Name asc",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$top",
+                  "value": "3"
+                },
+                {
+                  "key": "$skip",
+                  "value": "6"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "Name asc"
+                }
+              ]
+            },
+            "description": "Offset paging — third page."
+          }
+        },
+        {
+          "name": "$filter + $orderby + $top + $skip — combined",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=Species ne 'Cat'&$orderby=AdoptionFee asc&$top=3&$skip=0",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species ne 'Cat'"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "AdoptionFee asc"
+                },
+                {
+                  "key": "$top",
+                  "value": "3"
+                },
+                {
+                  "key": "$skip",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Full pipeline: filter out cats, sort cheapest first, return first page of 3."
+          }
+        },
+        {
+          "name": "$filter — invalid expression (400 error)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_url}}/api/pets?$filter=Species ??? 'Dog'",
+              "host": ["{{petshop_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species ??? 'Dog'"
+                }
+              ]
+            },
+            "description": "Demonstrates error handling. The `???` token is not a valid operator and triggers a `FilterParseException`, returning 400 with `error`, `detail`, and `position` fields."
+          }
+        }
+      ]
+    },
+    {
+      "name": "PetShop.Api.EFCore — EF Core + $expand",
+      "description": "Runs against `examples/PetShop.Api.EFCore`. Uses an EF Core in-memory database seeded on startup. Adds `$expand` support via `ApiQueryOptions.EntityFrameworkCore`.\n\nStart with: `cd examples/PetShop.Api.EFCore && dotnet run`",
+      "item": [
+        {
+          "name": "Get all pets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"]
+            },
+            "description": "Returns all seeded pets with no query options applied."
+          }
+        },
+        {
+          "name": "Get single pet by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets/1",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets", "1"]
+            },
+            "description": "Returns the pet whose Id = 1 with no related data."
+          }
+        },
+        {
+          "name": "Get single pet by ID + $expand=Owner,Appointments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets/1?$expand=Owner,Appointments",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets", "1"],
+              "query": [
+                {
+                  "key": "$expand",
+                  "value": "Owner,Appointments"
+                }
+              ]
+            },
+            "description": "Uses `$expand` on the by-ID endpoint. Includes the pet's Owner and Appointments via EF Core `.Include()`."
+          }
+        },
+        {
+          "name": "$filter — available dogs + $orderby desc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets?$filter=Species eq 'Dog' and IsAvailable eq true&$orderby=AdoptionFee desc",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species eq 'Dog' and IsAvailable eq true"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "AdoptionFee desc"
+                }
+              ]
+            },
+            "description": "Available dogs sorted by adoption fee, most expensive first."
+          }
+        },
+        {
+          "name": "$expand — Owner only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets?$expand=Owner",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$expand",
+                  "value": "Owner"
+                }
+              ]
+            },
+            "description": "Includes each pet's Owner navigation property. Translates to a LEFT JOIN in EF Core."
+          }
+        },
+        {
+          "name": "$expand — Appointments only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets?$expand=Appointments",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$expand",
+                  "value": "Appointments"
+                }
+              ]
+            },
+            "description": "Includes each pet's Appointments collection. Translates to a LEFT JOIN on the Appointments table."
+          }
+        },
+        {
+          "name": "$expand — Owner and Appointments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets?$expand=Owner,Appointments",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$expand",
+                  "value": "Owner,Appointments"
+                }
+              ]
+            },
+            "description": "Expands both navigation properties in a single query. Full pet record with owner and all appointments."
+          }
+        },
+        {
+          "name": "$filter + $orderby + $expand — combined",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets?$filter=Species eq 'Dog' and IsAvailable eq true&$orderby=AdoptionFee desc&$expand=Owner",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species eq 'Dog' and IsAvailable eq true"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "AdoptionFee desc"
+                },
+                {
+                  "key": "$expand",
+                  "value": "Owner"
+                }
+              ]
+            },
+            "description": "Full pipeline with expand: available dogs, most expensive first, with their owner included — all in a single SQL round-trip."
+          }
+        },
+        {
+          "name": "$filter + $top + $skip + $expand — paged cats with appointments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets?$filter=Species eq 'Cat'&$top=5&$skip=0&$expand=Appointments",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species eq 'Cat'"
+                },
+                {
+                  "key": "$top",
+                  "value": "5"
+                },
+                {
+                  "key": "$skip",
+                  "value": "0"
+                },
+                {
+                  "key": "$expand",
+                  "value": "Appointments"
+                }
+              ]
+            },
+            "description": "First page of 5 cats with their appointments included."
+          }
+        },
+        {
+          "name": "Owners — get all",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets/owners",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets", "owners"]
+            },
+            "description": "Returns all seeded pet owners."
+          }
+        },
+        {
+          "name": "Owners — $filter contains(Name)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets/owners?$filter=contains(Name, 'Alice')",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets", "owners"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "contains(Name, 'Alice')"
+                }
+              ]
+            },
+            "description": "`$filter` with `contains()` on the Owner resource. Case-insensitive."
+          }
+        },
+        {
+          "name": "Owners — $orderby name ascending",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets/owners?$orderby=Name asc",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets", "owners"],
+              "query": [
+                {
+                  "key": "$orderby",
+                  "value": "Name asc"
+                }
+              ]
+            },
+            "description": "All owners sorted alphabetically."
+          }
+        },
+        {
+          "name": "Owners — $filter + $orderby + $top",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets/owners?$filter=contains(Email, '.com')&$orderby=Name asc&$top=5",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets", "owners"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "contains(Email, '.com')"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "Name asc"
+                },
+                {
+                  "key": "$top",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Top 5 owners whose email contains '.com', sorted by name."
+          }
+        },
+        {
+          "name": "$filter — invalid expression (400 error)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{petshop_efcore_url}}/api/pets?$filter=Species eq",
+              "host": ["{{petshop_efcore_url}}"],
+              "path": ["api", "pets"],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Species eq"
+                }
+              ]
+            },
+            "description": "Truncated filter expression triggers a `FilterParseException`. Returns 400 with `error`, `detail`, and `position` fields."
+          }
+        }
+      ]
+    }
+  ]
+}

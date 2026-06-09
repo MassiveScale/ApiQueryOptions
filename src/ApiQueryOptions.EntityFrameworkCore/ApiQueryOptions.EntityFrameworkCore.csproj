@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- NuGet metadata -->
+    <PackageId>ApiQueryOptions.EntityFrameworkCore</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>MassiveScale</Authors>
+    <Description>EF Core companion for ApiQueryOptions — applies expand (Include), filter, orderby, skip, and top as a single deferred SQL query.</Description>
+    <PackageTags>aspnetcore;odata;efcore;entityframeworkcore;queryoptions;rest;api</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/MassiveScale/ApiQueryOptions</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageIcon>ant_icon_128.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.28" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="..\ApiQueryOptions\ant_icon_128.png" Pack="True" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ApiQueryOptions\ApiQueryOptions.csproj" />
+  </ItemGroup>
+
+</Project>

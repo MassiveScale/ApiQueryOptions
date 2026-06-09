@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- NuGet metadata -->
+    <PackageId>ApiQueryOptions</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>MassiveScale</Authors>
+    <Description>Lightweight OData-style query parameter parsing (filter, expand, orderby, top, skip, skiptoken) for ASP.NET Core REST APIs with IQueryable&lt;T&gt; extension methods and model binding.</Description>
+    <PackageTags>aspnetcore;odata;queryoptions;filter;rest;api</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/MassiveScale/ApiQueryOptions</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>ant_icon_128.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="ant_icon_128.png" Pack="True" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

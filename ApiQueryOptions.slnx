@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ApiQueryOptions.EntityFrameworkCore/ApiQueryOptions.EntityFrameworkCore.csproj" />
+    <Project Path="src/ApiQueryOptions/ApiQueryOptions.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ApiQueryOptions.EntityFrameworkCore.Tests/ApiQueryOptions.EntityFrameworkCore.Tests.csproj" />
+    <Project Path="tests/ApiQueryOptions.Tests/ApiQueryOptions.Tests.csproj" />
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/PetShop.Api/PetShop.Api.csproj" />
+    <Project Path="examples/PetShop.Api.EFCore/PetShop.Api.EFCore.csproj" />
+  </Folder>
+</Solution>
