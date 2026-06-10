@@ -553,11 +553,6 @@ public class SkipTokenTests
     [TestMethod]
     public void NextLink_WithRequest_ReplacesExistingSkipToken()
     {
-        var q = new QueryCollection(new Dictionary<string, StringValues>
-        {
-            ["$skiptoken"] = "old-token",
-        });
-
         // Decode an existing skiptoken that has $top set
         var innerQ = new QueryCollection(new Dictionary<string, StringValues> { ["$top"] = "5" });
         var options = new ApiQueryOptions<RoundTripEntity>(new QueryCollection(
