@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -72,7 +73,7 @@ public static class SkipTokenEncoder
     /// <param name="skipOverride">
     /// When provided, encodes this value as <c>$skip</c> in the token instead of
     /// <see cref="ApiQueryOptions{T}.Skip"/>. Used by
-    /// <see cref="ApiQueryOptions{T}.NextLink"/> to advance the cursor to the next page.
+    /// <see cref="ApiQueryOptions{T}.NextLink(int, int?)"/> to advance the cursor to the next page.
     /// </param>
     public static string Encode<T>(ApiQueryOptions<T> options, int? skipOverride = null)
     {
@@ -96,22 +97,21 @@ public static class SkipTokenEncoder
 
         if (options.Top is not null)
         {
-            dict["top"] = options.Top.Value.ToString();
+            dict["top"] = options.Top.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         if (skipOverride.HasValue)
         {
-            dict["skip"] = skipOverride.Value.ToString();
+            dict["skip"] = skipOverride.Value.ToString(CultureInfo.InvariantCulture);
         }
         else if (options.Skip is not null)
         {
-            dict["skip"] = options.Skip.Value.ToString();
+            dict["skip"] = options.Skip.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         string json = JsonSerializer.Serialize(dict, _jsonOptions);
         return Base64UrlEncode(Encoding.UTF8.GetBytes(json));
     }
-
 
     private static byte[] Base64UrlDecode(string token)
     {

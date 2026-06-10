@@ -1,3 +1,4 @@
+using System.Text;
 using ApiQueryOptions.Options;
 using ApiQueryOptions.SkipToken;
 using Microsoft.AspNetCore.Http;
@@ -11,6 +12,16 @@ namespace ApiQueryOptions;
 /// <typeparam name="T">The entity type being queried.</typeparam>
 public sealed class ApiQueryOptions<T>
 {
+    private static readonly HashSet<string> _ownedQueryParams = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "$expand",    "expand",
+        "$filter",    "filter",
+        "$orderby",   "orderby",
+        "$skip",      "skip",
+        "$skiptoken", "skiptoken",
+        "$top",       "top",
+    };
+
     /// <summary>
     /// Parses query options from an <see cref="IQueryCollection"/>.
     /// Query keys are matched case-insensitively. Unrecognised keys are silently ignored.
@@ -175,10 +186,67 @@ public sealed class ApiQueryOptions<T>
     }
 
     /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
+    /// Builds a full next-page URL from the given <paramref name="request"/> URI,
+    /// or <c>null</c> when pagination is not active or no further pages exist.
+    /// ApiQueryOptions-owned parameters (<c>$filter</c>, <c>$orderby</c>, <c>$top</c>,
+    /// <c>$skip</c>, <c>$expand</c>, <c>$skiptoken</c>, and their un-prefixed variants)
+    /// are removed from the query string and replaced by a single <c>$skiptoken</c>.
+    /// All other query parameters are preserved unchanged.
     /// </summary>
-    public static ApiQueryOptions<T> FromRequest(HttpRequest request, ApiQueryOptionsSettings? settings = null)
-        => new(request.Query, settings);
+    /// <param name="request">
+    /// The current HTTP request, used to derive the base URL (scheme, host, path) and
+    /// any non-ApiQueryOptions query parameters to forward.
+    /// </param>
+    /// <param name="resultCount">
+    /// The number of items returned by the current query. When this is less than
+    /// <c>$top</c> the caller is on the last page and <c>null</c> is returned.
+    /// </param>
+    /// <param name="totalCount">
+    /// The total number of matching records, when known. When provided, the link is
+    /// suppressed if the advanced skip cursor would meet or exceed the total.
+    /// </param>
+    /// <returns>
+    /// An absolute URL with non-ApiQueryOptions parameters forwarded and
+    /// <c>$skiptoken=…</c> appended, or <c>null</c> if no next page exists.
+    /// </returns>
+    public string? NextLink(HttpRequest request, int resultCount, int? totalCount = null)
+    {
+        string? token = NextLink(resultCount, totalCount);
+        if (token is null)
+        {
+            return null;
+        }
+
+        var qs = new StringBuilder();
+        foreach (KeyValuePair<string, StringValues> kvp in request.Query)
+        {
+            if (_ownedQueryParams.Contains(kvp.Key))
+            {
+                continue;
+            }
+
+            foreach (string? value in kvp.Value)
+            {
+                if (qs.Length > 0)
+                {
+                    qs.Append('&');
+                }
+
+                qs.Append(Uri.EscapeDataString(kvp.Key))
+                  .Append('=')
+                  .Append(Uri.EscapeDataString(value ?? string.Empty));
+            }
+        }
+
+        if (qs.Length > 0)
+        {
+            qs.Append('&');
+        }
+
+        qs.Append("$skiptoken=").Append(token);
+
+        return $"{request.Scheme}://{request.Host}{request.Path}?{qs}";
+    }
 
     private static string? GetValue(IQueryCollection query, string key)
     {
@@ -192,4 +260,16 @@ public sealed class ApiQueryOptions<T>
         }
         return null;
     }
+}
+
+/// <summary>
+/// Factory methods for <see cref="ApiQueryOptions{T}"/>.
+/// </summary>
+public static class ApiQueryOptions
+{
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
+    /// </summary>
+    public static ApiQueryOptions<T> FromRequest<T>(HttpRequest request, ApiQueryOptionsSettings? settings = null)
+        => new(request.Query, settings);
 }

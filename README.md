@@ -168,27 +168,55 @@ The EF Core `Apply` calls the core pipeline first, then adds `.Include()` calls 
 
 ---
 
-## Cursor-based pagination with `$skiptoken`
+## Paged responses with `PagedResponse<T>`
 
-`SkipTokenEncoder` serialises the current query state into a Base64URL token that can be passed back as `$skiptoken` to re-request the same "page shape" plus a new offset.
+`PagedResponse<T>` is a response envelope that pairs the current page of results with a `nextLink` URL for the following page. Use `PagedResponse.Create` — it computes the next-page URL from the current request, stripping all ApiQueryOptions-owned parameters and replacing them with a single `$skiptoken`, while forwarding any other query parameters unchanged.
+
+```csharp
+[HttpGet]
+[ApiQueryOptions(DefaultPageSize = 25, MaxPageSize = 100)]
+public async Task<IActionResult> Get(ApiQueryOptions<Product> options)
+{
+    List<Product> items = await _db.Products
+                                   .Apply(options)
+                                   .AsNoTracking()
+                                   .ToListAsync();
+
+    return Ok(PagedResponse.Create(items, options, Request));
+}
+```
+
+**Response shape:**
+
+```json
+{
+  "value": [ ... ],
+  "nextLink": "https://api.example.com/api/products?$skiptoken=eyJmaWx0ZXIi...",
+  "count": null
+}
+```
+
+`nextLink` is `null` when the current page is the last page. Pass a `totalCount` to include the total and to suppress `nextLink` precisely when all records have been delivered:
+
+```csharp
+int total = await _db.Products.CountAsync();
+List<Product> items = await _db.Products.Apply(options).AsNoTracking().ToListAsync();
+return Ok(PagedResponse.Create(items, options, Request, totalCount: total));
+```
+
+The client follows `nextLink` verbatim — the token encodes `$filter`, `$orderby`, `$top`, and the advanced `$skip`, so the next request needs no additional parameters.
+
+## Cursor-based pagination with `$skiptoken` (advanced)
+
+`SkipTokenEncoder` serialises the current query state into a Base64URL token that can be passed back as `$skiptoken` to re-request the same "page shape" plus a new offset. `options.NextLink(Request, count)` handles this automatically; use the encoder directly only when you need lower-level control.
 
 ```csharp
 using ApiQueryOptions.SkipToken;
 
-// In the action — encode the token for the next page:
-var nextOptions = new ApiQueryOptions<Product>(
-    new QueryCollection(new Dictionary<string, StringValues>
-    {
-        ["$filter"]  = options.Filter?.RawValue ?? string.Empty,
-        ["$orderby"] = "Name asc",
-        ["$top"]     = "25",
-        ["$skip"]    = (currentSkip + 25).ToString(),
-    }));
+// Encode manually:
+string token = SkipTokenEncoder.Encode(options, skipOverride: currentSkip + pageSize);
 
-string nextToken = SkipTokenEncoder.Encode(nextOptions);
-// Return nextToken in the response envelope as "@nextLink"
-
-// On the next request — decode:
+// Decode on the next request:
 var decodedOptions = SkipTokenEncoder.Decode<Product>(request.Query["$skiptoken"]!);
 var results = await _db.Products.Apply(decodedOptions).ToListAsync();
 ```
@@ -224,7 +252,7 @@ Calling an `Apply*` extension method directly with a disabled setting does throw
 
 ```csharp
 // From an HttpRequest (in a minimal API or middleware):
-var options = ApiQueryOptions<Product>.FromRequest(httpContext.Request, settings);
+var options = ApiQueryOptions.FromRequest<Product>(httpContext.Request, settings);
 
 // From any IQueryCollection:
 var options = new ApiQueryOptions<Product>(queryCollection, settings);
@@ -250,10 +278,7 @@ var options = new ApiQueryOptions<Product>(queryCollection, settings);
 ```csharp
 // Program.cs
 builder.Services.AddControllers();
-builder.Services.AddApiQueryOptions(new ApiQueryOptionsSettings
-{
-    SkipTokenEnabled = false,   // using offset paging instead
-});
+builder.Services.AddApiQueryOptions();
 
 // ProductsController.cs
 [ApiController]
@@ -264,20 +289,17 @@ public class ProductsController : ControllerBase
     public ProductsController(AppDbContext db) => _db = db;
 
     [HttpGet]
+    [ApiQueryOptions(DefaultPageSize = 20, MaxPageSize = 100)]
     public async Task<IActionResult> Get(ApiQueryOptions<Product> options)
     {
         try
         {
-            var query = _db.Products.Apply(options).AsNoTracking();
-            var total = await _db.Products.CountAsync();   // before paging
-            var items = await query.ToListAsync();
+            List<Product> items = await _db.Products
+                                           .Apply(options)
+                                           .AsNoTracking()
+                                           .ToListAsync();
 
-            return Ok(new
-            {
-                total,
-                count = items.Count,
-                value = items,
-            });
+            return Ok(PagedResponse.Create(items, options, Request));
         }
         catch (FilterParseException ex)
         {
@@ -287,14 +309,26 @@ public class ProductsController : ControllerBase
 }
 ```
 
-Example request:
+First request — note only `$filter` and `$orderby` are needed; the default page size kicks in automatically:
 
 ```
-GET /api/products?$filter=Category eq 'Electronics' and Price lt 500
-                 &$orderby=Name asc
-                 &$top=20
-                 &$skip=0
-                 &$expand=Supplier
+GET /api/products?$filter=Category eq 'Electronics' and Price lt 500&$orderby=Name asc
+```
+
+Response:
+
+```json
+{
+  "value": [ ... ],
+  "nextLink": "https://api.example.com/api/products?$skiptoken=eyJmaWx0ZXIi...",
+  "count": null
+}
+```
+
+Follow-up — the client passes `nextLink` verbatim; no need to re-specify `$filter`, `$top`, etc.:
+
+```
+GET /api/products?$skiptoken=eyJmaWx0ZXIi...
 ```
 
 ---
@@ -319,6 +353,7 @@ src/
   ApiQueryOptions/                        # Core package
     ApiQueryOptions.cs                    # ApiQueryOptions<T> — main entry point
     ApiQueryOptionsSettings.cs            # Per-option enable/disable + StringComparison
+    PagedResponse.cs                      # PagedResponse<T> — paged response envelope
     Binding/
       ApiQueryOptionsModelBinder.cs       # IModelBinder implementation
       ApiQueryOptionsModelBinderProvider.cs

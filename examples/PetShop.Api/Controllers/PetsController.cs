@@ -42,20 +42,14 @@ public sealed class PetsController : ControllerBase
     /// </remarks>
     [HttpGet]
     [ApiQueryOptions(DefaultPageSize = 5, MaxPageSize = 10)]
-    public IActionResult Get(ApiQueryOptions<Pet> options)
+    public IActionResult Get(ApiQueryOptions<Pet> queryOptions)
     {
         try
         {
-            var results = _pets.AsQueryable()
-                               .Apply(options)
-                               .ToList();
-
-            return Ok(new
-            {
-                nextLink = options.NextLink(results.Count),
-                count = results.Count,
-                value = results
-            });
+            return Ok(PagedResponse.Create(
+                value: [.. _pets.AsQueryable().Apply(queryOptions)],
+                options: queryOptions,
+                request: Request));
         }
         catch (FilterParseException ex)
         {
