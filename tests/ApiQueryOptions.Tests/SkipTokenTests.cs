@@ -554,7 +554,6 @@ public class SkipTokenTests
     public void NextLink_WithRequest_ReplacesExistingSkipToken()
     {
         // Decode an existing skiptoken that has $top set
-        var innerQ = new QueryCollection(new Dictionary<string, StringValues> { ["$top"] = "5" });
         var options = new ApiQueryOptions<RoundTripEntity>(new QueryCollection(
             new Dictionary<string, StringValues> { ["$top"] = "5" }));
 
