@@ -375,6 +375,207 @@ public class SkipTokenTests
 
         token.Should().NotBeNull();
     }
+
+    [TestMethod]
+    public void NextLink_WithRequest_ReturnsAbsoluteUrl()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$top"] = "10",
+            ["$skip"] = "0",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+
+        string? url = options.NextLink(ctx.Request, resultCount: 10);
+
+        url.Should().NotBeNull();
+        url.Should().StartWith("https://example.com/api/items?$skiptoken=");
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_TokenEncodesNextSkip()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$top"] = "10",
+            ["$skip"] = "20",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+
+        string? url = options.NextLink(ctx.Request, resultCount: 10);
+
+        url.Should().NotBeNull();
+        string token = url!.Split("$skiptoken=")[1];
+        ApiQueryOptions<RoundTripEntity> next = SkipTokenEncoder.Decode<RoundTripEntity>(token);
+        next.Skip!.Value.Should().Be(30);
+        next.Top!.Value.Should().Be(10);
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_LastPage_ReturnsNull()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$top"] = "10",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+
+        string? url = options.NextLink(ctx.Request, resultCount: 9);
+
+        url.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_IncludesPortWhenNonStandard()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$top"] = "5",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com", 8443);
+        ctx.Request.Path = "/api/items";
+
+        string? url = options.NextLink(ctx.Request, resultCount: 5);
+
+        url.Should().NotBeNull();
+        url.Should().StartWith("https://example.com:8443/api/items?$skiptoken=");
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_TotalCountExhausted_ReturnsNull()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$top"] = "10",
+            ["$skip"] = "5",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+
+        string? url = options.NextLink(ctx.Request, resultCount: 10, totalCount: 15);
+
+        url.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_DropsApiQueryOptionsParams()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$filter"]  = "Name eq 'Alice'",
+            ["$orderby"] = "Name asc",
+            ["$top"]     = "10",
+            ["$skip"]    = "0",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+        ctx.Request.QueryString = new QueryString("?$filter=Name+eq+%27Alice%27&$orderby=Name+asc&$top=10&$skip=0");
+
+        string? url = options.NextLink(ctx.Request, resultCount: 10);
+
+        url.Should().NotBeNull();
+        url.Should().NotContain("$filter");
+        url.Should().NotContain("$orderby");
+        url.Should().NotContain("$skip=");
+        url.Should().NotContain("$top=");
+        url.Should().Contain("$skiptoken=");
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_PreservesNonOwnedQueryParams()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["api-version"] = "2",
+            ["$top"]        = "5",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+        ctx.Request.QueryString = new QueryString("?api-version=2&$top=5");
+
+        string? url = options.NextLink(ctx.Request, resultCount: 5);
+
+        url.Should().NotBeNull();
+        url.Should().Contain("api-version=2");
+        url.Should().NotContain("$top=");
+        url.Should().Contain("$skiptoken=");
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_PreservesMultipleNonOwnedParams()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["api-version"] = "2",
+            ["tenant"]      = "acme",
+            ["$top"]        = "10",
+        });
+        var options = new ApiQueryOptions<RoundTripEntity>(q);
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+        ctx.Request.QueryString = new QueryString("?api-version=2&tenant=acme&$top=10");
+
+        string? url = options.NextLink(ctx.Request, resultCount: 10);
+
+        url.Should().NotBeNull();
+        url.Should().Contain("api-version=2");
+        url.Should().Contain("tenant=acme");
+        url.Should().Contain("$skiptoken=");
+        url.Should().NotContain("$top=");
+    }
+
+    [TestMethod]
+    public void NextLink_WithRequest_ReplacesExistingSkipToken()
+    {
+        var q = new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$skiptoken"] = "old-token",
+        });
+
+        // Decode an existing skiptoken that has $top set
+        var innerQ = new QueryCollection(new Dictionary<string, StringValues> { ["$top"] = "5" });
+        var options = new ApiQueryOptions<RoundTripEntity>(new QueryCollection(
+            new Dictionary<string, StringValues> { ["$top"] = "5" }));
+
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.Path = "/api/items";
+        ctx.Request.QueryString = new QueryString("?$skiptoken=old-token");
+
+        // Simulate a decoded-from-skiptoken options (top=5 already set)
+        string? url = options.NextLink(ctx.Request, resultCount: 5);
+
+        url.Should().NotBeNull();
+        url.Should().NotContain("old-token");
+        url.Should().Contain("$skiptoken=");
+    }
 }
 
 internal sealed class RoundTripEntity

@@ -48,7 +48,7 @@ public sealed class PetsController : ControllerBase
                                    .AsNoTracking()
                                    .ToListAsync();
 
-            return Ok(new { count = results.Count, value = results });
+            return Ok(PagedResponse.Create(results, options, Request));
         }
         catch (FilterParseException ex)
         {
@@ -101,7 +101,7 @@ public sealed class PetsController : ControllerBase
                                    .AsNoTracking()
                                    .ToListAsync();
 
-            return Ok(new { count = results.Count, value = results });
+            return Ok(PagedResponse.Create(results, options, Request));
         }
         catch (FilterParseException ex)
         {

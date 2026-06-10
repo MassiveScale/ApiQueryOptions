@@ -27,11 +27,14 @@ dotnet run
 ### Example requests
 
 ```
-# All available dogs, cheapest first
+# All available dogs, cheapest first (default page size of 5 applies)
 GET http://localhost:5000/api/pets?$filter=Species eq 'Dog' and IsAvailable eq true&$orderby=AdoptionFee asc
 
 # First page of 3, skipping cats
 GET http://localhost:5000/api/pets?$filter=Species ne 'Cat'&$top=3&$skip=0&$orderby=Name asc
+
+# Follow the nextLink from a previous response to get the next page
+GET http://localhost:5000/api/pets?$skiptoken=<value from response.nextLink>
 
 # Pets whose name contains "bell" (case-insensitive)
 GET http://localhost:5000/api/pets?$filter=contains(Name, 'bell')
@@ -44,6 +47,16 @@ GET http://localhost:5000/api/pets?$filter=AdoptionFee ge 50 and AdoptionFee le 
 
 # Single pet by ID
 GET http://localhost:5000/api/pets/1
+```
+
+Responses include a `nextLink` property containing the full URL for the next page, or `null` if this is the last page:
+
+```json
+{
+  "value": [ ... ],
+  "nextLink": "http://localhost:5000/api/pets?$skiptoken=eyJmaWx0ZXIi...",
+  "count": null
+}
 ```
 
 ---
