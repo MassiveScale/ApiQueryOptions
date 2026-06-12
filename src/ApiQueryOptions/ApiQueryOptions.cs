@@ -12,15 +12,7 @@ namespace ApiQueryOptions;
 /// <typeparam name="T">The entity type being queried.</typeparam>
 public sealed class ApiQueryOptions<T>
 {
-    private static readonly HashSet<string> _ownedQueryParams = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "$expand",    "expand",
-        "$filter",    "filter",
-        "$orderby",   "orderby",
-        "$skip",      "skip",
-        "$skiptoken", "skiptoken",
-        "$top",       "top",
-    };
+    private readonly HashSet<string> _ownedQueryParams;
 
     /// <summary>
     /// Parses query options from an <see cref="IQueryCollection"/>.
@@ -31,6 +23,14 @@ public sealed class ApiQueryOptions<T>
     {
         Settings = settings ?? new ApiQueryOptionsSettings();
 
+        _ownedQueryParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in Settings.ExpandParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.FilterParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.OrderByParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.SkipParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.SkipTokenParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.TopParameterNames) _ownedQueryParams.Add(name);
+
         if (query is null)
         {
             return;
@@ -40,7 +40,7 @@ public sealed class ApiQueryOptions<T>
         // individual URL parameters ($filter, $orderby, $top, $skip, $expand).
         if (Settings.SkipTokenEnabled)
         {
-            string? tokenRaw = GetValue(query, "$skiptoken") ?? GetValue(query, "skiptoken");
+            string? tokenRaw = GetFirstValue(query, Settings.SkipTokenParameterNames);
             if (!string.IsNullOrWhiteSpace(tokenRaw))
             {
                 SkipToken = new SkipTokenQueryOption(tokenRaw);
@@ -57,7 +57,7 @@ public sealed class ApiQueryOptions<T>
         // $filter
         if (Settings.FilterEnabled)
         {
-            string? raw = GetValue(query, "$filter") ?? GetValue(query, "filter");
+            string? raw = GetFirstValue(query, Settings.FilterParameterNames);
             if (!string.IsNullOrWhiteSpace(raw))
             {
                 Filter = new FilterQueryOption(raw);
@@ -67,7 +67,7 @@ public sealed class ApiQueryOptions<T>
         // $expand
         if (Settings.ExpandEnabled)
         {
-            string? raw = GetValue(query, "$expand") ?? GetValue(query, "expand");
+            string? raw = GetFirstValue(query, Settings.ExpandParameterNames);
             if (!string.IsNullOrWhiteSpace(raw))
             {
                 Expand = new ExpandQueryOption(raw);
@@ -77,7 +77,7 @@ public sealed class ApiQueryOptions<T>
         // $orderby
         if (Settings.OrderByEnabled)
         {
-            string? raw = GetValue(query, "$orderby") ?? GetValue(query, "orderby");
+            string? raw = GetFirstValue(query, Settings.OrderByParameterNames);
             if (!string.IsNullOrWhiteSpace(raw))
             {
                 OrderBy = new OrderByQueryOption(raw);
@@ -87,7 +87,7 @@ public sealed class ApiQueryOptions<T>
         // $top
         if (Settings.TopEnabled)
         {
-            string? raw = GetValue(query, "$top") ?? GetValue(query, "top");
+            string? raw = GetFirstValue(query, Settings.TopParameterNames);
             Top = TopQueryOption.TryParse(raw);
 
             if (Top is null && Settings.DefaultPageSize.HasValue)
@@ -104,7 +104,7 @@ public sealed class ApiQueryOptions<T>
         // $skip
         if (Settings.SkipEnabled)
         {
-            string? raw = GetValue(query, "$skip") ?? GetValue(query, "skip");
+            string? raw = GetFirstValue(query, Settings.SkipParameterNames);
             Skip = SkipQueryOption.TryParse(raw);
         }
     }
@@ -246,6 +246,19 @@ public sealed class ApiQueryOptions<T>
         qs.Append("$skiptoken=").Append(token);
 
         return $"{request.Scheme}://{request.Host}{request.Path}?{qs}";
+    }
+
+    private static string? GetFirstValue(IQueryCollection query, IReadOnlyList<string> names)
+    {
+        foreach (string name in names)
+        {
+            string? value = GetValue(query, name);
+            if (value is not null)
+            {
+                return value;
+            }
+        }
+        return null;
     }
 
     private static string? GetValue(IQueryCollection query, string key)
