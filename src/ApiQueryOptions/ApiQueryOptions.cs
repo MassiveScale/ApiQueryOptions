@@ -243,7 +243,7 @@ public sealed class ApiQueryOptions<T>
             qs.Append('&');
         }
 
-        qs.Append("$skiptoken=").Append(token);
+        qs.Append(Settings.SkipTokenParameterNames[0]).Append('=').Append(token);
 
         return $"{request.Scheme}://{request.Host}{request.Path}?{qs}";
     }
