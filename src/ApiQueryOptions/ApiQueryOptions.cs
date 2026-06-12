@@ -19,7 +19,7 @@ public sealed class ApiQueryOptions<T>
     /// Query keys are matched case-insensitively. Unrecognised keys are silently ignored.
     /// Disabled options whose keys are present are silently skipped (no exception at parse time).
     /// </summary>
-    public ApiQueryOptions(IQueryCollection query, ApiQueryOptionsSettings? settings = null)
+    public ApiQueryOptions(IQueryCollection? query, ApiQueryOptionsSettings? settings = null)
     {
         Settings = settings ?? new ApiQueryOptionsSettings();
 
@@ -285,4 +285,18 @@ public static class ApiQueryOptions
     /// </summary>
     public static ApiQueryOptions<T> FromRequest<T>(HttpRequest request, ApiQueryOptionsSettings? settings = null)
         => new(request.Query, settings);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpContext"/>.
+    /// When <paramref name="context"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    public static ApiQueryOptions<T> FromRequest<T>(HttpContext? context, ApiQueryOptionsSettings? settings = null)
+        => new(context?.Request.Query, settings);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="IHttpContextAccessor"/>.
+    /// When <see cref="IHttpContextAccessor.HttpContext"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    public static ApiQueryOptions<T> FromRequest<T>(IHttpContextAccessor accessor, ApiQueryOptionsSettings? settings = null)
+        => FromRequest<T>(accessor.HttpContext, settings);
 }
