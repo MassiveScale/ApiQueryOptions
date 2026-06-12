@@ -398,7 +398,7 @@ public class QueryOptionTests
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Request.QueryString = new QueryString("?$top=7");
-        var options = ApiQueryOptions.FromRequest<SampleEntity>(httpContext.Request);
+        var options = ApiQueryOptions<SampleEntity>.FromRequest(httpContext.Request);
         options.Top!.Value.Should().Be(7);
     }
 

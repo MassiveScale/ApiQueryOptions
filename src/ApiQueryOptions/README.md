@@ -192,19 +192,27 @@ query = query.ApplyTop(options.Top!, settings);
 
 All properties use `init`-only setters and default to the most permissive values.
 
-| Property          | Type               | Default               | Description                            |
-| ----------------- | ------------------ | --------------------- | -------------------------------------- |
-| `FilterEnabled`   | `bool`             | `true`                | Accept `$filter`                       |
-| `ExpandEnabled`   | `bool`             | `true`                | Accept `$expand`                       |
-| `OrderByEnabled`  | `bool`             | `true`                | Accept `$orderby`                      |
-| `TopEnabled`      | `bool`             | `true`                | Accept `$top`                          |
-| `SkipEnabled`     | `bool`             | `true`                | Accept `$skip`                         |
-| `SkipTokenEnabled`| `bool`             | `true`                | Accept `$skiptoken`                    |
-| `MaxPageSize`     | `int?`             | `null`                | Upper limit for `$top`; silently clamps|
-| `DefaultPageSize` | `int?`             | `null`                | Default `$top` when none provided      |
-| `StringComparison`| `StringComparison` | `OrdinalIgnoreCase`   | Used for string `eq`/`ne` and functions|
+| Property                  | Type                    | Default                     | Description                             |
+| ------------------------- | ----------------------- | --------------------------- | --------------------------------------- |
+| `FilterEnabled`           | `bool`                  | `true`                      | Accept `$filter`                        |
+| `ExpandEnabled`           | `bool`                  | `true`                      | Accept `$expand`                        |
+| `OrderByEnabled`          | `bool`                  | `true`                      | Accept `$orderby`                       |
+| `TopEnabled`              | `bool`                  | `true`                      | Accept `$top`                           |
+| `SkipEnabled`             | `bool`                  | `true`                      | Accept `$skip`                          |
+| `SkipTokenEnabled`        | `bool`                  | `true`                      | Accept `$skiptoken`                     |
+| `MaxPageSize`             | `int?`                  | `null`                      | Upper limit for `$top`; silently clamps |
+| `DefaultPageSize`         | `int?`                  | `null`                      | Default `$top` when none provided       |
+| `StringComparison`        | `StringComparison`      | `OrdinalIgnoreCase`         | Used for string `eq`/`ne` and functions |
+| `FilterParameterNames`    | `IReadOnlyList<string>` | `["$filter",    "filter"]`  | Query keys recognised as `$filter`      |
+| `ExpandParameterNames`    | `IReadOnlyList<string>` | `["$expand",    "expand"]`  | Query keys recognised as `$expand`      |
+| `OrderByParameterNames`   | `IReadOnlyList<string>` | `["$orderby",   "orderby"]` | Query keys recognised as `$orderby`     |
+| `TopParameterNames`       | `IReadOnlyList<string>` | `["$top",       "top"]`     | Query keys recognised as `$top`         |
+| `SkipParameterNames`      | `IReadOnlyList<string>` | `["$skip",      "skip"]`    | Query keys recognised as `$skip`        |
+| `SkipTokenParameterNames` | `IReadOnlyList<string>` | `["$skiptoken", "skiptoken"]` | Query keys recognised as `$skiptoken` |
 
 When an option is disabled, any matching query key is silently ignored and the corresponding property on `ApiQueryOptions<T>` will be `null`.
+
+`*ParameterNames` lists are tried left-to-right; the first match wins. Custom names are automatically excluded from `NextLink` query-string passthrough.
 
 ---
 
@@ -222,8 +230,14 @@ When an option is disabled, any matching query key is silently ignored and the c
 ## Manual construction
 
 ```csharp
-// From an HttpRequest (minimal APIs, middleware):
-ApiQueryOptions<Product> options = ApiQueryOptions<Product>.FromRequest(httpContext.Request, settings);
+// From an HttpRequest (minimal API or middleware):
+ApiQueryOptions<Product> options = ApiQueryOptions.FromRequest<Product>(request, settings);
+
+// From an HttpContext — safe when context is null (returns empty no-op instance):
+ApiQueryOptions<Product> options = ApiQueryOptions.FromRequest<Product>(httpContext, settings);
+
+// From an IHttpContextAccessor (in a service):
+ApiQueryOptions<Product> options = ApiQueryOptions.FromRequest<Product>(httpContextAccessor, settings);
 
 // From any IQueryCollection:
 ApiQueryOptions<Product> options = new(queryCollection, settings);

@@ -12,24 +12,24 @@ namespace ApiQueryOptions;
 /// <typeparam name="T">The entity type being queried.</typeparam>
 public sealed class ApiQueryOptions<T>
 {
-    private static readonly HashSet<string> _ownedQueryParams = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "$expand",    "expand",
-        "$filter",    "filter",
-        "$orderby",   "orderby",
-        "$skip",      "skip",
-        "$skiptoken", "skiptoken",
-        "$top",       "top",
-    };
+    private readonly HashSet<string> _ownedQueryParams;
 
     /// <summary>
     /// Parses query options from an <see cref="IQueryCollection"/>.
     /// Query keys are matched case-insensitively. Unrecognised keys are silently ignored.
     /// Disabled options whose keys are present are silently skipped (no exception at parse time).
     /// </summary>
-    public ApiQueryOptions(IQueryCollection query, ApiQueryOptionsSettings? settings = null)
+    public ApiQueryOptions(IQueryCollection? query, ApiQueryOptionsSettings? settings = null)
     {
         Settings = settings ?? new ApiQueryOptionsSettings();
+
+        _ownedQueryParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in Settings.ExpandParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.FilterParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.OrderByParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.SkipParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.SkipTokenParameterNames) _ownedQueryParams.Add(name);
+        foreach (string name in Settings.TopParameterNames) _ownedQueryParams.Add(name);
 
         if (query is null)
         {
@@ -40,7 +40,7 @@ public sealed class ApiQueryOptions<T>
         // individual URL parameters ($filter, $orderby, $top, $skip, $expand).
         if (Settings.SkipTokenEnabled)
         {
-            string? tokenRaw = GetValue(query, "$skiptoken") ?? GetValue(query, "skiptoken");
+            string? tokenRaw = GetFirstValue(query, Settings.SkipTokenParameterNames);
             if (!string.IsNullOrWhiteSpace(tokenRaw))
             {
                 SkipToken = new SkipTokenQueryOption(tokenRaw);
@@ -57,7 +57,7 @@ public sealed class ApiQueryOptions<T>
         // $filter
         if (Settings.FilterEnabled)
         {
-            string? raw = GetValue(query, "$filter") ?? GetValue(query, "filter");
+            string? raw = GetFirstValue(query, Settings.FilterParameterNames);
             if (!string.IsNullOrWhiteSpace(raw))
             {
                 Filter = new FilterQueryOption(raw);
@@ -67,7 +67,7 @@ public sealed class ApiQueryOptions<T>
         // $expand
         if (Settings.ExpandEnabled)
         {
-            string? raw = GetValue(query, "$expand") ?? GetValue(query, "expand");
+            string? raw = GetFirstValue(query, Settings.ExpandParameterNames);
             if (!string.IsNullOrWhiteSpace(raw))
             {
                 Expand = new ExpandQueryOption(raw);
@@ -77,7 +77,7 @@ public sealed class ApiQueryOptions<T>
         // $orderby
         if (Settings.OrderByEnabled)
         {
-            string? raw = GetValue(query, "$orderby") ?? GetValue(query, "orderby");
+            string? raw = GetFirstValue(query, Settings.OrderByParameterNames);
             if (!string.IsNullOrWhiteSpace(raw))
             {
                 OrderBy = new OrderByQueryOption(raw);
@@ -87,7 +87,7 @@ public sealed class ApiQueryOptions<T>
         // $top
         if (Settings.TopEnabled)
         {
-            string? raw = GetValue(query, "$top") ?? GetValue(query, "top");
+            string? raw = GetFirstValue(query, Settings.TopParameterNames);
             Top = TopQueryOption.TryParse(raw);
 
             if (Top is null && Settings.DefaultPageSize.HasValue)
@@ -104,7 +104,7 @@ public sealed class ApiQueryOptions<T>
         // $skip
         if (Settings.SkipEnabled)
         {
-            string? raw = GetValue(query, "$skip") ?? GetValue(query, "skip");
+            string? raw = GetFirstValue(query, Settings.SkipParameterNames);
             Skip = SkipQueryOption.TryParse(raw);
         }
     }
@@ -243,10 +243,36 @@ public sealed class ApiQueryOptions<T>
             qs.Append('&');
         }
 
-        qs.Append("$skiptoken=").Append(token);
+        qs.Append(Settings.SkipTokenParameterNames[0]).Append('=').Append(token);
 
         return $"{request.Scheme}://{request.Host}{request.Path}?{qs}";
     }
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(request) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(HttpRequest request, ApiQueryOptionsSettings? settings = null)
+        => new(request.Query, settings);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpContext"/>.
+    /// When <paramref name="context"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(context) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(HttpContext? context, ApiQueryOptionsSettings? settings = null)
+        => new(context?.Request.Query, settings);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="IHttpContextAccessor"/>.
+    /// When <see cref="IHttpContextAccessor.HttpContext"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(accessor) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(IHttpContextAccessor accessor, ApiQueryOptionsSettings? settings = null)
+        => FromRequest(accessor.HttpContext, settings);
+
+    private static string? GetFirstValue(IQueryCollection query, IReadOnlyList<string> names) =>
+        names.Select(name => GetValue(query, name)).FirstOrDefault(value => value is not null);
 
     private static string? GetValue(IQueryCollection query, string key)
     {
@@ -262,14 +288,3 @@ public sealed class ApiQueryOptions<T>
     }
 }
 
-/// <summary>
-/// Factory methods for <see cref="ApiQueryOptions{T}"/>.
-/// </summary>
-public static class ApiQueryOptions
-{
-    /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
-    /// </summary>
-    public static ApiQueryOptions<T> FromRequest<T>(HttpRequest request, ApiQueryOptionsSettings? settings = null)
-        => new(request.Query, settings);
-}

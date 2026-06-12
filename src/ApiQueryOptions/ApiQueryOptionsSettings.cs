@@ -20,9 +20,21 @@ public sealed class ApiQueryOptionsSettings
     public bool ExpandEnabled { get; init; } = true;
 
     /// <summary>
+    /// The query parameter names recognised as the <c>$expand</c> option, tried left-to-right.
+    /// Default: <c>["$expand", "expand"]</c>.
+    /// </summary>
+    public IReadOnlyList<string> ExpandParameterNames { get; init; } = ["$expand", "expand"];
+
+    /// <summary>
     /// Whether the <c>$filter</c> query parameter is accepted. Default: <c>true</c>.
     /// </summary>
     public bool FilterEnabled { get; init; } = true;
+
+    /// <summary>
+    /// The query parameter names recognised as the <c>$filter</c> option, tried left-to-right.
+    /// Default: <c>["$filter", "filter"]</c>.
+    /// </summary>
+    public IReadOnlyList<string> FilterParameterNames { get; init; } = ["$filter", "filter"];
 
     /// <summary>
     /// The maximum value the caller may supply for <c>$top</c>. When a request exceeds this
@@ -37,14 +49,32 @@ public sealed class ApiQueryOptionsSettings
     public bool OrderByEnabled { get; init; } = true;
 
     /// <summary>
+    /// The query parameter names recognised as the <c>$orderby</c> option, tried left-to-right.
+    /// Default: <c>["$orderby", "orderby"]</c>.
+    /// </summary>
+    public IReadOnlyList<string> OrderByParameterNames { get; init; } = ["$orderby", "orderby"];
+
+    /// <summary>
     /// Whether the <c>$skip</c> query parameter is accepted. Default: <c>true</c>.
     /// </summary>
     public bool SkipEnabled { get; init; } = true;
 
     /// <summary>
+    /// The query parameter names recognised as the <c>$skip</c> option, tried left-to-right.
+    /// Default: <c>["$skip", "skip"]</c>.
+    /// </summary>
+    public IReadOnlyList<string> SkipParameterNames { get; init; } = ["$skip", "skip"];
+
+    /// <summary>
     /// Whether the <c>$skiptoken</c> query parameter is accepted. Default: <c>true</c>.
     /// </summary>
     public bool SkipTokenEnabled { get; init; } = true;
+
+    /// <summary>
+    /// The query parameter names recognised as the <c>$skiptoken</c> option, tried left-to-right.
+    /// Default: <c>["$skiptoken", "skiptoken"]</c>.
+    /// </summary>
+    public IReadOnlyList<string> SkipTokenParameterNames { get; init; } = ["$skiptoken", "skiptoken"];
 
     /// <summary>
     /// String comparison used for filter string comparisons (<c>eq</c>, <c>startsWith</c>, etc.).
@@ -56,6 +86,12 @@ public sealed class ApiQueryOptionsSettings
     /// Whether the <c>$top</c> query parameter is accepted. Default: <c>true</c>.
     /// </summary>
     public bool TopEnabled { get; init; } = true;
+
+    /// <summary>
+    /// The query parameter names recognised as the <c>$top</c> option, tried left-to-right.
+    /// Default: <c>["$top", "top"]</c>.
+    /// </summary>
+    public IReadOnlyList<string> TopParameterNames { get; init; } = ["$top", "top"];
 
     /// <summary>
     /// Returns a new <see cref="ApiQueryOptionsSettings"/> with <see cref="MaxPageSize"/> and/or
@@ -74,13 +110,19 @@ public sealed class ApiQueryOptionsSettings
         {
             DefaultPageSize = defaultPageSize ?? DefaultPageSize,
             ExpandEnabled = ExpandEnabled,
+            ExpandParameterNames = ExpandParameterNames,
             FilterEnabled = FilterEnabled,
+            FilterParameterNames = FilterParameterNames,
             MaxPageSize = maxPageSize ?? MaxPageSize,
             OrderByEnabled = OrderByEnabled,
+            OrderByParameterNames = OrderByParameterNames,
             SkipEnabled = SkipEnabled,
+            SkipParameterNames = SkipParameterNames,
             SkipTokenEnabled = SkipTokenEnabled,
+            SkipTokenParameterNames = SkipTokenParameterNames,
             StringComparison = StringComparison,
             TopEnabled = TopEnabled,
+            TopParameterNames = TopParameterNames,
         };
     }
 }

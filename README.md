@@ -246,13 +246,45 @@ When an option is disabled, any matching query key is **silently ignored** at pa
 
 Calling an `Apply*` extension method directly with a disabled setting does throw `QueryOptionDisabledException`.
 
+### Configurable parameter names
+
+Each option exposes a `*ParameterNames` property that controls which query string keys it responds to. Names are tried left-to-right; the first match wins. The defaults reproduce the current OData behaviour so no change is needed unless you want aliases.
+
+```csharp
+builder.Services.AddApiQueryOptions(o =>
+{
+    // Accept "limit" as an alias for "$top"/"top"
+    o.TopParameterNames = ["$top", "top", "limit"];
+
+    // Accept "q" as an alias for "$filter"
+    o.FilterParameterNames = ["$filter", "filter", "q"];
+});
+```
+
+| Property                | Default                          |
+| ----------------------- | -------------------------------- |
+| `FilterParameterNames`  | `["$filter",    "filter"]`       |
+| `ExpandParameterNames`  | `["$expand",    "expand"]`       |
+| `OrderByParameterNames` | `["$orderby",   "orderby"]`      |
+| `TopParameterNames`     | `["$top",       "top"]`          |
+| `SkipParameterNames`    | `["$skip",      "skip"]`         |
+| `SkipTokenParameterNames` | `["$skiptoken", "skiptoken"]`  |
+
+Custom names are automatically excluded from the query-string passthrough in `NextLink`.
+
 ---
 
 ## Manual construction (without model binding)
 
 ```csharp
-// From an HttpRequest (in a minimal API or middleware):
-var options = ApiQueryOptions.FromRequest<Product>(httpContext.Request, settings);
+// From an HttpRequest (minimal API or middleware):
+var options = ApiQueryOptions.FromRequest<Product>(request, settings);
+
+// From an HttpContext — safe when context is null (returns empty no-op instance):
+var options = ApiQueryOptions.FromRequest<Product>(httpContext, settings);
+
+// From an IHttpContextAccessor (in a service):
+var options = ApiQueryOptions.FromRequest<Product>(httpContextAccessor, settings);
 
 // From any IQueryCollection:
 var options = new ApiQueryOptions<Product>(queryCollection, settings);
