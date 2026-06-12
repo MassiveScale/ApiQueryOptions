@@ -248,6 +248,29 @@ public sealed class ApiQueryOptions<T>
         return $"{request.Scheme}://{request.Host}{request.Path}?{qs}";
     }
 
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(request) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(HttpRequest request, ApiQueryOptionsSettings? settings = null)
+        => new(request.Query, settings);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpContext"/>.
+    /// When <paramref name="context"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(context) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(HttpContext? context, ApiQueryOptionsSettings? settings = null)
+        => new(context?.Request.Query, settings);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="IHttpContextAccessor"/>.
+    /// When <see cref="IHttpContextAccessor.HttpContext"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(accessor) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(IHttpContextAccessor accessor, ApiQueryOptionsSettings? settings = null)
+        => FromRequest(accessor.HttpContext, settings);
+
     private static string? GetFirstValue(IQueryCollection query, IReadOnlyList<string> names)
     {
         foreach (string name in names)
@@ -275,28 +298,3 @@ public sealed class ApiQueryOptions<T>
     }
 }
 
-/// <summary>
-/// Factory methods for <see cref="ApiQueryOptions{T}"/>.
-/// </summary>
-public static class ApiQueryOptions
-{
-    /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
-    /// </summary>
-    public static ApiQueryOptions<T> FromRequest<T>(HttpRequest request, ApiQueryOptionsSettings? settings = null)
-        => new(request.Query, settings);
-
-    /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpContext"/>.
-    /// When <paramref name="context"/> is <c>null</c>, returns an empty instance with no parsed options.
-    /// </summary>
-    public static ApiQueryOptions<T> FromRequest<T>(HttpContext? context, ApiQueryOptionsSettings? settings = null)
-        => new(context?.Request.Query, settings);
-
-    /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="IHttpContextAccessor"/>.
-    /// When <see cref="IHttpContextAccessor.HttpContext"/> is <c>null</c>, returns an empty instance with no parsed options.
-    /// </summary>
-    public static ApiQueryOptions<T> FromRequest<T>(IHttpContextAccessor accessor, ApiQueryOptionsSettings? settings = null)
-        => FromRequest<T>(accessor.HttpContext, settings);
-}
