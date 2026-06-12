@@ -271,18 +271,8 @@ public sealed class ApiQueryOptions<T>
     public static ApiQueryOptions<T> FromRequest(IHttpContextAccessor accessor, ApiQueryOptionsSettings? settings = null)
         => FromRequest(accessor.HttpContext, settings);
 
-    private static string? GetFirstValue(IQueryCollection query, IReadOnlyList<string> names)
-    {
-        foreach (string name in names)
-        {
-            string? value = GetValue(query, name);
-            if (value is not null)
-            {
-                return value;
-            }
-        }
-        return null;
-    }
+    private static string? GetFirstValue(IQueryCollection query, IReadOnlyList<string> names) =>
+        names.Select(name => GetValue(query, name)).FirstOrDefault(value => value is not null);
 
     private static string? GetValue(IQueryCollection query, string key)
     {
