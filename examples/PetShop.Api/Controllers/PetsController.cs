@@ -66,6 +66,36 @@ public sealed class PetsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Variant of Get() that constructs ApiQueryOptions from the current HttpRequest instead of model binding.
+    /// </summary>
+    [HttpGet("fromRequest")]
+    [ApiQueryOptions(DefaultPageSize = 5, MaxPageSize = 10)]
+    public IActionResult GetFromRequest()
+    {
+        var queryOptions = ApiQueryOptions<Pet>.FromRequest(Request);
+        try
+        {
+            return Ok(PagedResponse.Create(
+                value: [.. _pets.AsQueryable().Apply(queryOptions)],
+                options: queryOptions,
+                request: Request));
+        }
+        catch (FilterParseException ex)
+        {
+            return BadRequest(new
+            {
+                error = "Invalid $filter expression.",
+                detail = ex.Message,
+                position = ex.Position,
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>Returns a single pet by ID.</summary>
     [HttpGet("{id:int}")]
     public IActionResult GetById(int id)

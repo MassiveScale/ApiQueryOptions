@@ -1,13 +1,35 @@
 using ApiQueryOptions.SkipToken;
-using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;
+using NSubstitute;
 
 namespace ApiQueryOptions.Tests;
 
 [TestClass]
 public class SkipTokenTests
 {
+    private IHttpContextAccessor httpContextAccessor = null!;
+    private Uri baseUri = new("https://api.example.com/api/");
+    private HttpRequest request = Substitute.For<HttpRequest>();
+    private QueryCollection queryParams = new(new Dictionary<string, StringValues>());
+    private const string SkipTokenQueryParam = "$skiptoken";
+
+    [TestInitialize]
+    public void TestInitialize()
+    {
+        // Mock HttpContextAccessor with minimal HttpContext and request
+        // Note: ApiQueryOptions.FromRequest() extracts paging/filtering from query string
+        HttpContext mockHttpContext = Substitute.For<HttpContext>();
+        request.Query.Returns(queryParams);
+        request.Scheme.Returns(baseUri.Scheme);
+        request.Host.Returns(new HostString(baseUri.Host));
+        request.Path.Returns(new PathString(baseUri.AbsolutePath));
+        mockHttpContext.Request.Returns(request);
+        httpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext.Returns(mockHttpContext);
+    }
+
     [TestMethod]
     public void Decode_InvalidBase64_ThrowsFormatException()
     {
@@ -232,6 +254,80 @@ public class SkipTokenTests
     }
 
     [TestMethod]
+    public void NextLink_Should_Return_Uri_With_SkipToken()
+    {
+        // Arrange
+        request.Query.Returns(new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$top"] = "5",
+        }));
+
+        var options = ApiQueryOptions<RoundTripEntity>.FromRequest(httpContextAccessor);
+
+        // Acction
+        string? result = options.NextLink(resultCount: 5);
+
+        // Assert
+        result.Should().NotBeNull();
+
+        // Validate that the result is a well-formed absolute URI
+        Uri.TryCreate(result!, UriKind.Absolute, out Uri? nextLinkUri).Should().BeTrue();
+        nextLinkUri.Should().NotBeNull();
+        nextLinkUri.Scheme.Should().Be(baseUri.Scheme);
+        nextLinkUri.Host.Should().Be(baseUri.Host);
+        nextLinkUri.AbsolutePath.Should().Be(baseUri.AbsolutePath);
+
+        // Parse the query params from the next link URL
+        Dictionary<string, StringValues> queryParams = QueryHelpers.ParseQuery(nextLinkUri.Query);
+        queryParams.Keys.Should().ContainEquivalentOf(SkipTokenQueryParam);
+        queryParams.Should().HaveCount(1);
+
+        // Extract the token and decode it
+        string token = queryParams[SkipTokenQueryParam].ToString();
+        ApiQueryOptions<RoundTripEntity> next = SkipTokenEncoder.Decode<RoundTripEntity>(token);
+
+        next.Skip!.Value.Should().Be(5); // advanced from default 0 to 5
+        next.Top!.Value.Should().Be(5); // top should be preserved
+        next.Filter.Should().BeNull(); // filter was not set, should remain null
+        next.OrderBy.Should().BeNull(); // orderby was not set, should remain null
+        next.Expand.Should().BeNull(); // expand was not set, should remain null
+        next.SkipToken.Should().BeNull(); // skiptokens should not be nested
+    }
+
+    [TestMethod]
+    public void NextLink_Should_Retain_NonQueryOption_Parms_In_NextLink()
+    {
+        // Arrange
+        request.Query.Returns(new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["$top"] = "5",
+            ["api-version"] = "2" // non-ApiQueryOptions param that should be preserved in next link
+        }));
+
+        var options = ApiQueryOptions<RoundTripEntity>.FromRequest(httpContextAccessor);
+
+        // Acction
+        string? result = options.NextLink(resultCount: 5);
+
+        // Assert
+        result.Should().NotBeNull();
+
+        // Validate that the result is a well-formed absolute URI
+        Uri.TryCreate(result!, UriKind.Absolute, out Uri? nextLinkUri).Should().BeTrue();
+        nextLinkUri.Should().NotBeNull();
+        nextLinkUri.Scheme.Should().Be(baseUri.Scheme);
+        nextLinkUri.Host.Should().Be(baseUri.Host);
+        nextLinkUri.AbsolutePath.Should().Be(baseUri.AbsolutePath);
+
+        // Parse the query params from the next link URL
+        Dictionary<string, StringValues> queryParams = QueryHelpers.ParseQuery(nextLinkUri.Query);
+        queryParams.Keys.Should().ContainEquivalentOf(SkipTokenQueryParam);
+        queryParams.Keys.Should().ContainEquivalentOf("api-version");
+        queryParams.Should().HaveCount(2);
+        queryParams["api-version"].Should().Contain("2");
+    }
+
+    [TestMethod]
     public void NextLink_AdvancesSkipByTop()
     {
         var q = new QueryCollection(new Dictionary<string, StringValues>
@@ -241,7 +337,7 @@ public class SkipTokenTests
         });
         var options = new ApiQueryOptions<RoundTripEntity>(q);
 
-        string? token = options.NextLink(resultCount: 10);
+        string? token = options.GetNextToken(resultCount: 10);
 
         token.Should().NotBeNull();
         ApiQueryOptions<RoundTripEntity> next = SkipTokenEncoder.Decode<RoundTripEntity>(token!);
@@ -480,10 +576,10 @@ public class SkipTokenTests
     {
         var q = new QueryCollection(new Dictionary<string, StringValues>
         {
-            ["$filter"]  = "Name eq 'Alice'",
+            ["$filter"] = "Name eq 'Alice'",
             ["$orderby"] = "Name asc",
-            ["$top"]     = "10",
-            ["$skip"]    = "0",
+            ["$top"] = "10",
+            ["$skip"] = "0",
         });
         var options = new ApiQueryOptions<RoundTripEntity>(q);
         var ctx = new DefaultHttpContext();
@@ -508,7 +604,7 @@ public class SkipTokenTests
         var q = new QueryCollection(new Dictionary<string, StringValues>
         {
             ["api-version"] = "2",
-            ["$top"]        = "5",
+            ["$top"] = "5",
         });
         var options = new ApiQueryOptions<RoundTripEntity>(q);
         var ctx = new DefaultHttpContext();
@@ -531,8 +627,8 @@ public class SkipTokenTests
         var q = new QueryCollection(new Dictionary<string, StringValues>
         {
             ["api-version"] = "2",
-            ["tenant"]      = "acme",
-            ["$top"]        = "10",
+            ["tenant"] = "acme",
+            ["$top"] = "10",
         });
         var options = new ApiQueryOptions<RoundTripEntity>(q);
         var ctx = new DefaultHttpContext();
