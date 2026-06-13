@@ -32,4 +32,8 @@
     <None Include="ant_icon_128.png" Pack="True" PackagePath="/" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Flurl" Version="4.0.0" />
+  </ItemGroup>
+
 </Project>

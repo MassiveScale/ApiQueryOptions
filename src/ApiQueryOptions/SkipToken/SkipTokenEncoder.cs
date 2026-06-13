@@ -59,6 +59,13 @@ public static class SkipTokenEncoder
             }
         }
 
+        // Protect against encoded token containing a skipToken parameter
+        // which could cause confusion or conflicts
+        if (queryDict.ContainsKey("$skiptoken"))
+        {
+            queryDict.Remove("$skiptoken");
+        }
+
         var queryCollection = new QueryCollection(queryDict);
         return new ApiQueryOptions<T>(queryCollection, settings);
     }

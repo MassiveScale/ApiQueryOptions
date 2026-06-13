@@ -1,4 +1,3 @@
-using System.Text;
 using ApiQueryOptions.Options;
 using ApiQueryOptions.SkipToken;
 using Microsoft.AspNetCore.Http;
@@ -12,7 +11,8 @@ namespace ApiQueryOptions;
 /// <typeparam name="T">The entity type being queried.</typeparam>
 public sealed class ApiQueryOptions<T>
 {
-    private readonly HashSet<string> _ownedQueryParams;
+    private readonly HttpRequest? httpRequest;
+    private readonly HashSet<string> ownedQueryParams;
 
     /// <summary>
     /// Parses query options from an <see cref="IQueryCollection"/>.
@@ -20,16 +20,53 @@ public sealed class ApiQueryOptions<T>
     /// Disabled options whose keys are present are silently skipped (no exception at parse time).
     /// </summary>
     public ApiQueryOptions(IQueryCollection? query, ApiQueryOptionsSettings? settings = null)
+        : this(query, settings, request: null)
+    {
+    }
+
+    private ApiQueryOptions(IQueryCollection? query, ApiQueryOptionsSettings? settings, HttpRequest? request)
     {
         Settings = settings ?? new ApiQueryOptionsSettings();
 
-        _ownedQueryParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (string name in Settings.ExpandParameterNames) _ownedQueryParams.Add(name);
-        foreach (string name in Settings.FilterParameterNames) _ownedQueryParams.Add(name);
-        foreach (string name in Settings.OrderByParameterNames) _ownedQueryParams.Add(name);
-        foreach (string name in Settings.SkipParameterNames) _ownedQueryParams.Add(name);
-        foreach (string name in Settings.SkipTokenParameterNames) _ownedQueryParams.Add(name);
-        foreach (string name in Settings.TopParameterNames) _ownedQueryParams.Add(name);
+        if (Settings.SkipTokenParameterNames == null || Settings.SkipTokenParameterNames.Count == 0)
+        {
+            throw new ArgumentException("SkipTokenParameterNames cannot be null or empty.", nameof(settings));
+        }
+
+        if (Settings.ExpandParameterNames == null || Settings.ExpandParameterNames.Count == 0)
+        {
+            throw new ArgumentException("ExpandParameterNames cannot be null or empty.", nameof(settings));
+        }
+
+        if (Settings.FilterParameterNames == null || Settings.FilterParameterNames.Count == 0)
+        {
+            throw new ArgumentException("FilterParameterNames cannot be null or empty.", nameof(settings));
+        }
+
+        if (Settings.OrderByParameterNames == null || Settings.OrderByParameterNames.Count == 0)
+        {
+            throw new ArgumentException("OrderByParameterNames cannot be null or empty.", nameof(settings));
+        }
+
+        if (Settings.TopParameterNames == null || Settings.TopParameterNames.Count == 0)
+        {
+            throw new ArgumentException("TopParameterNames cannot be null or empty.", nameof(settings));
+        }
+
+        if (Settings.SkipParameterNames == null || Settings.SkipParameterNames.Count == 0)
+        {
+            throw new ArgumentException("SkipParameterNames cannot be null or empty.", nameof(settings));
+        }
+
+        this.httpRequest = request;
+
+        ownedQueryParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in Settings.ExpandParameterNames) ownedQueryParams.Add(name);
+        foreach (string name in Settings.FilterParameterNames) ownedQueryParams.Add(name);
+        foreach (string name in Settings.OrderByParameterNames) ownedQueryParams.Add(name);
+        foreach (string name in Settings.SkipParameterNames) ownedQueryParams.Add(name);
+        foreach (string name in Settings.SkipTokenParameterNames) ownedQueryParams.Add(name);
+        foreach (string name in Settings.TopParameterNames) ownedQueryParams.Add(name);
 
         if (query is null)
         {
@@ -145,10 +182,37 @@ public sealed class ApiQueryOptions<T>
     public TopQueryOption? Top { get; }
 
     /// <summary>
-    /// Generates a Base64URL-encoded skip token for the <em>next</em> page of results,
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(request) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(HttpRequest request, ApiQueryOptionsSettings? settings = null)
+        => new(request.Query, settings, request);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpContext"/>.
+    /// When <paramref name="context"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(context) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(HttpContext? context, ApiQueryOptionsSettings? settings = null)
+        => new(context?.Request.Query, settings, context?.Request);
+
+    /// <summary>
+    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="IHttpContextAccessor"/>.
+    /// When <see cref="IHttpContextAccessor.HttpContext"/> is <c>null</c>, returns an empty instance with no parsed options.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(accessor) is the intended pattern.")]
+    public static ApiQueryOptions<T> FromRequest(IHttpContextAccessor accessor, ApiQueryOptionsSettings? settings = null)
+    {
+        HttpContext? context = accessor.HttpContext;
+        return new(context?.Request.Query, settings, context?.Request);
+    }
+
+    /// <summary>
+    /// Generates a Base64URL-encoded skip token for paginating to the next page,
     /// or <c>null</c> when pagination is not active or no further pages exist.
-    /// The encoded token advances <c>$skip</c> by <c>$top</c> so that decoding it
-    /// directly yields ready-to-use options for the following page.
+    /// This method returns only the token itself, not a full URL.
+    /// To build a complete next-page URL, use <see cref="NextLink(int, int?)"/> (for instances
+    /// created via FromRequest) or <see cref="NextLink(HttpRequest, int, int?)"/>.
     /// </summary>
     /// <param name="resultCount">
     /// The number of items returned by the current query. When this is less than
@@ -162,27 +226,40 @@ public sealed class ApiQueryOptions<T>
     /// A URL-safe Base64 skip token whose decoded <c>$skip</c> equals
     /// <c>current skip + top</c>, or <c>null</c> if no next page exists.
     /// </returns>
+    public string? GetNextToken(int resultCount, int? totalCount = null) =>
+        GenerateNextToken(resultCount, totalCount);
+
+    /// <summary>
+    /// Generates a full next-page URL with query parameters, or <c>null</c> when pagination
+    /// is not active or no further pages exist.
+    /// This overload requires that the instance was created from an <see cref="HttpRequest"/>
+    /// (via <see cref="FromRequest(HttpRequest, ApiQueryOptionsSettings?)"/>,
+    /// <see cref="FromRequest(HttpContext, ApiQueryOptionsSettings?)"/>, or
+    /// <see cref="FromRequest(IHttpContextAccessor, ApiQueryOptionsSettings?)"/>).
+    /// </summary>
+    /// <param name="resultCount">
+    /// The number of items returned by the current query. When this is less than
+    /// <c>$top</c> the caller is on the last page and <c>null</c> is returned.
+    /// </param>
+    /// <param name="totalCount">
+    /// The total number of matching records, when known. When provided, the link is
+    /// suppressed if the advanced skip cursor would meet or exceed the total.
+    /// </param>
+    /// <returns>
+    /// An absolute URL with non-ApiQueryOptions parameters forwarded and
+    /// <c>$skiptoken=…</c> appended, or <c>null</c> if no next page exists.
+    /// </returns>
     public string? NextLink(int resultCount, int? totalCount = null)
     {
-        if (Top is null)
+        string? token = GenerateNextToken(resultCount, totalCount);
+        if (token is null)
         {
             return null;
         }
 
-        int currentSkip = Skip?.Value ?? 0;
-        int nextSkip = currentSkip + Top.Value;
-
-        if (resultCount < Top.Value)
-        {
-            return null;
-        }
-
-        if (totalCount.HasValue && nextSkip >= totalCount.Value)
-        {
-            return null;
-        }
-
-        return SkipTokenEncoder.Encode(this, nextSkip);
+        return httpRequest is null
+            ? token
+            : BuildNextLinkUrl(httpRequest, token);
     }
 
     /// <summary>
@@ -211,65 +288,14 @@ public sealed class ApiQueryOptions<T>
     /// </returns>
     public string? NextLink(HttpRequest request, int resultCount, int? totalCount = null)
     {
-        string? token = NextLink(resultCount, totalCount);
+        string? token = GenerateNextToken(resultCount, totalCount);
         if (token is null)
         {
             return null;
         }
 
-        var qs = new StringBuilder();
-        foreach (KeyValuePair<string, StringValues> kvp in request.Query)
-        {
-            if (_ownedQueryParams.Contains(kvp.Key))
-            {
-                continue;
-            }
-
-            foreach (string? value in kvp.Value)
-            {
-                if (qs.Length > 0)
-                {
-                    qs.Append('&');
-                }
-
-                qs.Append(Uri.EscapeDataString(kvp.Key))
-                  .Append('=')
-                  .Append(Uri.EscapeDataString(value ?? string.Empty));
-            }
-        }
-
-        if (qs.Length > 0)
-        {
-            qs.Append('&');
-        }
-
-        qs.Append(Settings.SkipTokenParameterNames[0]).Append('=').Append(token);
-
-        return $"{request.Scheme}://{request.Host}{request.Path}?{qs}";
+        return BuildNextLinkUrl(request, token);
     }
-
-    /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
-    /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(request) is the intended pattern.")]
-    public static ApiQueryOptions<T> FromRequest(HttpRequest request, ApiQueryOptionsSettings? settings = null)
-        => new(request.Query, settings);
-
-    /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpContext"/>.
-    /// When <paramref name="context"/> is <c>null</c>, returns an empty instance with no parsed options.
-    /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(context) is the intended pattern.")]
-    public static ApiQueryOptions<T> FromRequest(HttpContext? context, ApiQueryOptionsSettings? settings = null)
-        => new(context?.Request.Query, settings);
-
-    /// <summary>
-    /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="IHttpContextAccessor"/>.
-    /// When <see cref="IHttpContextAccessor.HttpContext"/> is <c>null</c>, returns an empty instance with no parsed options.
-    /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(accessor) is the intended pattern.")]
-    public static ApiQueryOptions<T> FromRequest(IHttpContextAccessor accessor, ApiQueryOptionsSettings? settings = null)
-        => FromRequest(accessor.HttpContext, settings);
 
     private static string? GetFirstValue(IQueryCollection query, IReadOnlyList<string> names) =>
         names.Select(name => GetValue(query, name)).FirstOrDefault(value => value is not null);
@@ -286,5 +312,60 @@ public sealed class ApiQueryOptions<T>
         }
         return null;
     }
-}
 
+    private string BuildNextLinkUrl(HttpRequest request, string token)
+    {
+        // We use Flurl here for convenient URL manipulation (Flurl rocks)
+        Flurl.Url url = new($"{request.Scheme}://{request.Host}");
+        url.AppendPathSegment(request.PathBase);
+        url.AppendPathSegment(request.Path);
+
+        foreach (KeyValuePair<string, StringValues> kvp in request.Query)
+        {
+            if (ownedQueryParams.Contains(kvp.Key))
+            {
+                // The skip token fully encodes the query state
+                // so don't forward any individual query parameters
+                // that ApiQueryOptions owns (they would be ignored anyway).
+                continue;
+            }
+
+            foreach (string? value in kvp.Value)
+            {
+                // Append all non-ApiQueryOptions parameters unchanged,
+                // including any unrecognized or custom ones. These are
+                // forwarded verbatim since we cannot know whether they
+                // are relevant endpoint handling the next page or not.
+                url.AppendQueryParam(kvp.Key, value ?? string.Empty);
+            }
+        }
+
+        // Append our new skip token to the query string
+        url.AppendQueryParam(Settings.SkipTokenParameterNames.First(), token);
+
+        return url.ToString();
+    }
+
+    private string? GenerateNextToken(int resultCount, int? totalCount)
+    {
+        if (Top is null)
+        {
+            return null;
+        }
+
+        int currentSkip = Skip?.Value ?? 0;
+        int nextSkip = currentSkip + Top.Value;
+
+        if (resultCount < Top.Value)
+        {
+            return null;
+        }
+
+        if (totalCount.HasValue && nextSkip >= totalCount.Value)
+        {
+            return null;
+        }
+
+        return SkipTokenEncoder.Encode(this, nextSkip);
+    }
+}
