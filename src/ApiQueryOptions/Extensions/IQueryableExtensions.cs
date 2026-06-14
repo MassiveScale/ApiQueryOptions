@@ -147,22 +147,18 @@ public static class IQueryableExtensions
         object? converted = node.Value is null ? null : Convert.ChangeType(node.Value, targetType);
         ConstantExpression constExpr = Expression.Constant(converted, propExpr.Type);
 
-        // For string eq/ne, honour the configured StringComparison
-        if (propExpr.Type == typeof(string) && node.Operator is FilterOperator.Eq or FilterOperator.Ne)
+        // For string eq/ne with OrdinalIgnoreCase, use .ToUpper() for EF Core compatibility
+        if (propExpr.Type == typeof(string) && node.Operator is FilterOperator.Eq or FilterOperator.Ne &&
+            settings.StringComparison == StringComparison.OrdinalIgnoreCase)
         {
-            MethodInfo compareMethod = typeof(string).GetMethod(
-                nameof(string.Equals),
-                [typeof(string), typeof(StringComparison)])!;
+            MethodInfo toUpperMethod = typeof(string).GetMethod(nameof(string.ToUpper), [])!;
+            Expression propUpper = Expression.Call(propExpr, toUpperMethod);
+            Expression constUpper = Expression.Call(constExpr, toUpperMethod);
 
-            MethodCallExpression compareExpr = Expression.Call(
-                propExpr,
-                compareMethod,
-                constExpr,
-                Expression.Constant(settings.StringComparison));
-
+            BinaryExpression equalExpr = Expression.Equal(propUpper, constUpper);
             return node.Operator == FilterOperator.Ne
-                ? Expression.Not(compareExpr)
-                : (Expression)compareExpr;
+                ? Expression.Not(equalExpr)
+                : (Expression)equalExpr;
         }
 
         return node.Operator switch
@@ -198,7 +194,6 @@ public static class IQueryableExtensions
     {
         MemberExpression propExpr = BuildPropertyAccess(param, node.Property);
         ConstantExpression valueExpr = Expression.Constant(node.Value);
-        ConstantExpression comparisonExpr = Expression.Constant(settings.StringComparison);
 
         string methodName = node.Function switch
         {
@@ -208,8 +203,18 @@ public static class IQueryableExtensions
             _ => throw new NotSupportedException($"Unsupported string function: {node.Function}") // coverage: exclude
         };
 
-        MethodInfo method = typeof(string).GetMethod(methodName, [typeof(string), typeof(StringComparison)])!;
-        return Expression.Call(propExpr, method, valueExpr, comparisonExpr);
+        // For OrdinalIgnoreCase, use .ToUpper() on both sides for EF Core compatibility
+        if (settings.StringComparison == StringComparison.OrdinalIgnoreCase)
+        {
+            MethodInfo toUpperMethod = typeof(string).GetMethod(nameof(string.ToUpper), [])!;
+            Expression propUpper = Expression.Call(propExpr, toUpperMethod);
+            Expression valueUpper = Expression.Call(valueExpr, toUpperMethod);
+            MethodInfo method = typeof(string).GetMethod(methodName, [typeof(string)])!;
+            return Expression.Call(propUpper, method, valueUpper);
+        }
+
+        MethodInfo caseSensitiveMethod = typeof(string).GetMethod(methodName, [typeof(string)])!;
+        return Expression.Call(propExpr, caseSensitiveMethod, valueExpr);
     }
 
     private static Expression BuildLogicalExpression(

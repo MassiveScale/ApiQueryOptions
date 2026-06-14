@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [1.0.0-beta5] - 2026-06-14
+
+### Fixed
+
+- **EF Core LINQ translation for case-insensitive string comparisons** — `$filter` expressions with case-insensitive string equality and string functions (startswith, endswith, contains) now correctly translate to SQL.  
+  
+## [1.0.0-beta4] - 2026-06-12
+
+(Version bump — no user-facing changes)
+
 ## [1.0.0-beta3] - 2026-06-12
 
 ### Added
