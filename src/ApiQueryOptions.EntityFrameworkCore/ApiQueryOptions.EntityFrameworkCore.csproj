@@ -9,7 +9,7 @@
 
     <!-- NuGet metadata -->
     <PackageId>ApiQueryOptions.EntityFrameworkCore</PackageId>
-    <Version>1.0.0-beta3</Version>
+    <Version>1.0.0-beta5</Version>
     <Authors>MassiveScale</Authors>
     <Description>EF Core companion for ApiQueryOptions — applies expand (Include), filter, orderby, skip, and top as a single deferred SQL query.</Description>
     <PackageTags>aspnetcore;odata;efcore;entityframeworkcore;queryoptions;rest;api</PackageTags>
