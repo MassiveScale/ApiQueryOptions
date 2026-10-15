@@ -87,7 +87,9 @@ internal sealed class ShapedEntity
 
     public string Title { get; set; } = string.Empty;
 
-    public string WriteOnly { set { } }
+    public string WriteOnly { set => WrittenValue = value; }
+
+    public string? WrittenValue { get; private set; }
 
     public string this[int index] => Title;
 }

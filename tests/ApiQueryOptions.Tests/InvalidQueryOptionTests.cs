@@ -239,7 +239,9 @@ internal sealed class ShapeEntity
 
     public string? Name { get; set; }
 
-    public string WriteOnly { set { } }
+    public string WriteOnly { set => WrittenValue = value; }
+
+    public string? WrittenValue { get; private set; }
 
     public string this[int index] => Name ?? string.Empty;
 }
