@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
-using Moq;
+using NSubstitute;
 
 namespace ApiQueryOptions.Tests;
 
@@ -131,12 +131,12 @@ public class ModelBinderTests
         var metadataProvider = new EmptyModelMetadataProvider();
         ModelMetadata metadata = metadataProvider.GetMetadataForType(typeof(string));
 
-        var mockCtx = new Mock<ModelBinderProviderContext>();
-        mockCtx.Setup(c => c.Metadata).Returns(metadata);
-        mockCtx.Setup(c => c.Services).Returns(services);
+        ModelBinderProviderContext providerContext = Substitute.For<ModelBinderProviderContext>();
+        providerContext.Metadata.Returns(metadata);
+        providerContext.Services.Returns(services);
 
         var provider = new ApiQueryOptionsModelBinderProvider();
-        provider.GetBinder(mockCtx.Object).Should().BeNull();
+        provider.GetBinder(providerContext).Should().BeNull();
     }
 
     [TestMethod]
@@ -149,12 +149,12 @@ public class ModelBinderTests
         var metadataProvider = new EmptyModelMetadataProvider();
         ModelMetadata metadata = metadataProvider.GetMetadataForType(typeof(ApiQueryOptions<BinderEntity>));
 
-        var mockCtx = new Mock<ModelBinderProviderContext>();
-        mockCtx.Setup(c => c.Metadata).Returns(metadata);
-        mockCtx.Setup(c => c.Services).Returns(services);
+        ModelBinderProviderContext providerContext = Substitute.For<ModelBinderProviderContext>();
+        providerContext.Metadata.Returns(metadata);
+        providerContext.Services.Returns(services);
 
         var provider = new ApiQueryOptionsModelBinderProvider();
-        provider.GetBinder(mockCtx.Object).Should().NotBeNull();
+        provider.GetBinder(providerContext).Should().NotBeNull();
     }
 
     [TestMethod]
@@ -165,12 +165,12 @@ public class ModelBinderTests
         var metadataProvider = new EmptyModelMetadataProvider();
         ModelMetadata metadata = metadataProvider.GetMetadataForType(typeof(ApiQueryOptions<BinderEntity>));
 
-        var mockCtx = new Mock<ModelBinderProviderContext>();
-        mockCtx.Setup(c => c.Metadata).Returns(metadata);
-        mockCtx.Setup(c => c.Services).Returns(services);
+        ModelBinderProviderContext providerContext = Substitute.For<ModelBinderProviderContext>();
+        providerContext.Metadata.Returns(metadata);
+        providerContext.Services.Returns(services);
 
         var provider = new ApiQueryOptionsModelBinderProvider();
-        provider.GetBinder(mockCtx.Object).Should().NotBeNull();
+        provider.GetBinder(providerContext).Should().NotBeNull();
     }
 
     [TestMethod]

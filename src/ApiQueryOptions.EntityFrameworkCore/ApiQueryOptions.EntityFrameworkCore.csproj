@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ApiQueryOptions.EntityFrameworkCore.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ApiQueryOptions\ApiQueryOptions.csproj" />
   </ItemGroup>
 

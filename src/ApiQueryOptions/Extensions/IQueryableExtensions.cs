@@ -325,8 +325,8 @@ public static class IQueryableExtensions
         Expression nullExpr = Expression.Constant(null, propExpr.Type);
         return node.Operator switch
         {
-            FilterOperator.Eq => BuildOperator(node, () => Expression.Equal(propExpr, nullExpr)),
-            FilterOperator.Ne => BuildOperator(node, () => Expression.NotEqual(propExpr, nullExpr)),
+            FilterOperator.Eq => Expression.Equal(propExpr, nullExpr),
+            FilterOperator.Ne => Expression.NotEqual(propExpr, nullExpr),
             _ => throw new InvalidQueryOptionException(
                 FilterOptionName,
                 node.Property,
@@ -413,7 +413,8 @@ public static class IQueryableExtensions
             _ => throw new NotSupportedException($"Unsupported operator: {op}") // coverage: exclude
         };
 
-        return mode == StringMode.Upper ? NotNullAnd(propExpr, result) : result;
+        // In memory, string.Compare sorts null first; excluding it matches nullable value types and SQL.
+        return NotNullAnd(propExpr, result);
     }
 
     /// <summary>

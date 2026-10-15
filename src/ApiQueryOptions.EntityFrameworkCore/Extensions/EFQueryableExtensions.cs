@@ -47,6 +47,31 @@ public static class EFQueryableExtensions
         return query;
     }
 
+    /// <summary>
+    /// Validates each segment of <paramref name="path"/> against <paramref name="rootType"/> and
+    /// returns the path with every segment in its declared casing.
+    /// </summary>
+    /// <exception cref="InvalidQueryOptionException">When a segment is not a public property.</exception>
+    internal static string ResolveNavigationPath(Type rootType, string path)
+    {
+        string[] segments = path.Split('.');
+        Type current = rootType;
+
+        for (int i = 0; i < segments.Length; i++)
+        {
+            PropertyInfo property = FindProperty(current, segments[i])
+                ?? throw new InvalidQueryOptionException(
+                    "expand",
+                    path,
+                    $"Property '{segments[i]}' not found on type '{current.Name}'.");
+
+            segments[i] = property.Name;
+            current = GetNavigationTargetType(property.PropertyType);
+        }
+
+        return string.Join('.', segments);
+    }
+
     private static PropertyInfo? FindProperty(Type type, string name)
     {
         PropertyInfo? caseInsensitiveMatch = null;
@@ -93,25 +118,5 @@ public static class EFQueryableExtensions
             : type.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
 
         return enumerable?.GetGenericArguments()[0] ?? type;
-    }
-
-    private static string ResolveNavigationPath(Type rootType, string path)
-    {
-        string[] segments = path.Split('.');
-        Type current = rootType;
-
-        for (int i = 0; i < segments.Length; i++)
-        {
-            PropertyInfo property = FindProperty(current, segments[i])
-                ?? throw new InvalidQueryOptionException(
-                    "expand",
-                    path,
-                    $"Property '{segments[i]}' not found on type '{current.Name}'.");
-
-            segments[i] = property.Name;
-            current = GetNavigationTargetType(property.PropertyType);
-        }
-
-        return string.Join('.', segments);
     }
 }
