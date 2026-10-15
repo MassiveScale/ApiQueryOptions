@@ -258,4 +258,20 @@ public class IQueryableExtensionTests
         ex.Property.Should().Be("NonExistent");
         ex.Message.Should().Be("Property 'NonExistent' not found on type 'SampleEntity'.");
     }
+
+    [TestMethod]
+    public void ApplyFilter_NeOnNumber_ExcludesMatches()
+    {
+        Q().ApplyFilter(new FilterQueryOption("Age ne 30"), new ApiQueryOptionsSettings())
+            .Select(e => e.Id)
+            .Should().Equal(2, 3, 4, 5);
+    }
+
+    [TestMethod]
+    public void ApplyOrderBy_SecondItemDescending_UsesThenByDescending()
+    {
+        Q().ApplyOrderBy(new OrderByQueryOption("Status asc, Age desc"), new ApiQueryOptionsSettings())
+            .Select(e => e.Id)
+            .Should().Equal(3, 1, 5, 2, 4);
+    }
 }

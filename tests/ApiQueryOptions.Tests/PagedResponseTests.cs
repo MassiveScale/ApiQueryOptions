@@ -62,6 +62,23 @@ public sealed class PagedResponseTests
     }
 
     [TestMethod]
+    public void Create_FullPage_SetsNextLinkAndCount()
+    {
+        var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new Microsoft.AspNetCore.Http.HostString("example.com");
+        ctx.Request.Path = "/items";
+        ctx.Request.QueryString = new Microsoft.AspNetCore.Http.QueryString("?$top=2");
+        var options = ApiQueryOptions<int>.FromRequest(ctx.Request);
+
+        PagedResponse<int> response = PagedResponse.Create([1, 2], options, ctx.Request, totalCount: 10);
+
+        response.Value.Should().Equal(1, 2);
+        response.Count.Should().Be(10);
+        response.NextLink.Should().StartWith("https://example.com/items?$skiptoken=");
+    }
+
+    [TestMethod]
     public void Constructor_CountZero_IsValid()
     {
         var response = new PagedResponse<string>([], count: 0);
