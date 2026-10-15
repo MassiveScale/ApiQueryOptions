@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Security
+
+- **`$filter` nesting and size limits** — deeply nested parentheses no longer recurse until the process crashes with a stack overflow. New `MaxFilterDepth` (default `32`) and `MaxFilterNodeCount` (default `100`) settings on `ApiQueryOptionsSettings` and `ApiQueryOptionsBuilder` reject larger expressions with a `FilterParseException`. `FilterParser` gains a `FilterParser(int maxDepth, int maxNodeCount)` constructor, and `FilterQueryOption` gains a `FilterQueryOption(string, ApiQueryOptionsSettings)` constructor.
+
+### Fixed
+
+- **Skip tokens with custom parameter names** — a `$skiptoken` now restores `$filter`, `$orderby`, `$top`, `$skip`, and `$expand` no matter which `*ParameterNames` are configured. Previously the second page lost its state when, for example, `FilterParameterNames` was `["q"]`.
+- **`[ApiQueryOptions]` attribute kept custom parameter names** — `ApplyTo` reset every `*ParameterNames` list to its default. It now copies all settings it does not override.
+- **`NextLink(int)` on model-bound options returns a full URL** — the model binder now builds options from the `HttpRequest`, matching the README quick start. Before, it returned only the bare token. The binder also caches its factory per type and the attribute-resolved settings per action instead of using reflection on every request.
+- **Malformed `$skiptoken` returns `400 Bad Request`** — the model binder adds a `ModelState` error (keyed by the skip-token parameter name) instead of throwing a `TargetInvocationException` that surfaced as `500`.
+- **`FilterQueryOption.FilterClause` is thread-safe** — concurrent first reads could see `null` while another thread was still parsing.
+- **EF Core query-plan cache pollution** — `$filter` values are now sent as SQL parameters instead of inlined literals, so EF Core and the database reuse one plan per filter shape.
+- **Next-page cursor overflow** — a `$skip` near `int.MaxValue` no longer wraps to a negative cursor; no next link is produced instead.
+
+### Changed
+
+- **Breaking:** the EF Core package no longer has its own `Apply` extension. The core `Apply` now applies `$expand` as `.Include()` calls whenever the `ApiQueryOptions.EntityFrameworkCore` package is installed, with no extra `using` needed. Before, importing both `ApiQueryOptions.Extensions` and `ApiQueryOptions.EntityFrameworkCore.Extensions` in the same file caused an ambiguous call error (CS0121). Importing only the core namespace silently ignored `$expand`. Code that imported only the EF Core namespace needs `using ApiQueryOptions.Extensions;`. `ApplyExpand` is unchanged.
+- The core `Apply` throws `ArgumentNullException` when `options` is `null`.
+- **Breaking:** when `SkipTokenEnabled` is `false`, `NextLink` builds an offset link (`$top` and the next `$skip`, other parameters forwarded) instead of a `$skiptoken` the server would ignore. It returns `null` when `$skip` is also disabled. `GetNextToken`, and `NextLink(int)` on an instance without a request, return `null` when skip tokens are disabled.
+- **Breaking:** `MaxPageSize`, `DefaultPageSize`, `MaxFilterDepth`, and `MaxFilterNodeCount` throw `ArgumentOutOfRangeException` when set to zero or a negative value. `TopQueryOption` rejects values below `1` and `SkipQueryOption` rejects negative values. A request with `$top` of zero or less, or a negative `$skip`, is treated as if the parameter were absent, the same as a non-numeric value.
+- **Breaking:** `ApiQueryOptionsModelBinder` throws `ArgumentException` when constructed with a type that is not a closed `ApiQueryOptions<T>`.
+
 ## [1.0.0-beta5] - 2026-06-14
 
 ### Fixed

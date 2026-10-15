@@ -171,6 +171,8 @@ The client passes the returned cursor as `$skiptoken` on the next request:
 GET /api/products?$skiptoken=<token>
 ```
 
+When `SkipTokenEnabled` is `false`, `NextLink` returns an offset link instead (`$top` and `$skip` set for the next page, all other parameters forwarded), or `null` if `$skip` is also disabled. A malformed `$skiptoken` on a model-bound action is added to `ModelState`, so an `[ApiController]` returns `400 Bad Request`.
+
 ---
 
 ## IQueryable extensions
@@ -178,7 +180,7 @@ GET /api/products?$skiptoken=<token>
 ```csharp
 using ApiQueryOptions.Extensions;
 
-IQueryable<T> result = query.Apply(options);            // filter → orderby → skip → top
+IQueryable<T> result = query.Apply(options);            // filter → orderby → skip → top → expand*
 
 query = query.ApplyFilter(options.Filter!, settings);
 query = query.ApplyOrderBy(options.OrderBy!, settings);
@@ -186,29 +188,35 @@ query = query.ApplySkip(options.Skip!, settings);
 query = query.ApplyTop(options.Top!, settings);
 ```
 
+\* `$expand` is applied as `.Include()` calls when the [ApiQueryOptions.EntityFrameworkCore](https://www.nuget.org/packages/ApiQueryOptions.EntityFrameworkCore) package is installed, and ignored otherwise.
+
 ---
 
 ## Configuration (`ApiQueryOptionsSettings`)
 
 All properties use `init`-only setters and default to the most permissive values.
 
-| Property                  | Type                    | Default                     | Description                             |
-| ------------------------- | ----------------------- | --------------------------- | --------------------------------------- |
-| `FilterEnabled`           | `bool`                  | `true`                      | Accept `$filter`                        |
-| `ExpandEnabled`           | `bool`                  | `true`                      | Accept `$expand`                        |
-| `OrderByEnabled`          | `bool`                  | `true`                      | Accept `$orderby`                       |
-| `TopEnabled`              | `bool`                  | `true`                      | Accept `$top`                           |
-| `SkipEnabled`             | `bool`                  | `true`                      | Accept `$skip`                          |
-| `SkipTokenEnabled`        | `bool`                  | `true`                      | Accept `$skiptoken`                     |
-| `MaxPageSize`             | `int?`                  | `null`                      | Upper limit for `$top`; silently clamps |
-| `DefaultPageSize`         | `int?`                  | `null`                      | Default `$top` when none provided       |
-| `StringComparison`        | `StringComparison`      | `OrdinalIgnoreCase`         | Used for string `eq`/`ne` and functions |
-| `FilterParameterNames`    | `IReadOnlyList<string>` | `["$filter",    "filter"]`  | Query keys recognised as `$filter`      |
-| `ExpandParameterNames`    | `IReadOnlyList<string>` | `["$expand",    "expand"]`  | Query keys recognised as `$expand`      |
-| `OrderByParameterNames`   | `IReadOnlyList<string>` | `["$orderby",   "orderby"]` | Query keys recognised as `$orderby`     |
-| `TopParameterNames`       | `IReadOnlyList<string>` | `["$top",       "top"]`     | Query keys recognised as `$top`         |
-| `SkipParameterNames`      | `IReadOnlyList<string>` | `["$skip",      "skip"]`    | Query keys recognised as `$skip`        |
-| `SkipTokenParameterNames` | `IReadOnlyList<string>` | `["$skiptoken", "skiptoken"]` | Query keys recognised as `$skiptoken` |
+| Property                  | Type                    | Default                       | Description                                       |
+|---------------------------|-------------------------|-------------------------------|---------------------------------------------------|
+| `FilterEnabled`           | `bool`                  | `true`                        | Accept `$filter`                                  |
+| `ExpandEnabled`           | `bool`                  | `true`                        | Accept `$expand`                                  |
+| `OrderByEnabled`          | `bool`                  | `true`                        | Accept `$orderby`                                 |
+| `TopEnabled`              | `bool`                  | `true`                        | Accept `$top`                                     |
+| `SkipEnabled`             | `bool`                  | `true`                        | Accept `$skip`                                    |
+| `SkipTokenEnabled`        | `bool`                  | `true`                        | Accept `$skiptoken`                               |
+| `MaxPageSize`             | `int?`                  | `null`                        | Upper limit for `$top`; silently clamps           |
+| `DefaultPageSize`         | `int?`                  | `null`                        | Default `$top` when none provided                 |
+| `MaxFilterDepth`          | `int`                   | `32`                          | Max parenthesis nesting in `$filter`              |
+| `MaxFilterNodeCount`      | `int`                   | `100`                         | Max comparisons, functions, and `and`/`or` nodes  |
+| `StringComparison`        | `StringComparison`      | `OrdinalIgnoreCase`           | Used for string `eq`/`ne` and functions           |
+| `FilterParameterNames`    | `IReadOnlyList<string>` | `["$filter", "filter"]`       | Query keys recognised as `$filter`                |
+| `ExpandParameterNames`    | `IReadOnlyList<string>` | `["$expand", "expand"]`       | Query keys recognised as `$expand`                |
+| `OrderByParameterNames`   | `IReadOnlyList<string>` | `["$orderby", "orderby"]`     | Query keys recognised as `$orderby`               |
+| `TopParameterNames`       | `IReadOnlyList<string>` | `["$top", "top"]`             | Query keys recognised as `$top`                   |
+| `SkipParameterNames`      | `IReadOnlyList<string>` | `["$skip", "skip"]`           | Query keys recognised as `$skip`                  |
+| `SkipTokenParameterNames` | `IReadOnlyList<string>` | `["$skiptoken", "skiptoken"]` | Query keys recognised as `$skiptoken`             |
+
+The page sizes and filter limits must be positive; zero or a negative value throws `ArgumentOutOfRangeException`. A `$top` of zero or less, or a negative `$skip`, is ignored like an absent parameter. A `$filter` that exceeds either filter limit throws `FilterParseException`.
 
 When an option is disabled, any matching query key is silently ignored and the corresponding property on `ApiQueryOptions<T>` will be `null`.
 

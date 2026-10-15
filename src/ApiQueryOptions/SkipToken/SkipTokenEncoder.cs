@@ -2,15 +2,24 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 
 namespace ApiQueryOptions.SkipToken;
 
 /// <summary>
 /// Encodes and decodes a skip token — a Base64URL-encoded JSON blob that captures
 /// the current query state for cursor-based pagination.
+/// The token uses fixed internal keys, so it decodes correctly regardless of the
+/// <c>*ParameterNames</c> configured in <see cref="ApiQueryOptionsSettings"/>.
 /// </summary>
 public static class SkipTokenEncoder
 {
+    private const string ExpandKey = "expand";
+    private const string FilterKey = "filter";
+    private const string OrderByKey = "orderby";
+    private const string SkipKey = "skip";
+    private const string TopKey = "top";
+
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
@@ -47,27 +56,24 @@ public static class SkipTokenEncoder
             throw new FormatException("The skip token decoded to a null payload.");
         }
 
-        // Rebuild from the decoded dictionary using a QueryCollection adapter
-        var queryDict = new Dictionary<string, Microsoft.Extensions.Primitives.StringValues>(
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach ((string? key, string? value) in dict)
+        ApiQueryOptionsSettings resolved = settings ?? new ApiQueryOptionsSettings();
+        var payload = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string key, string? value) in dict)
         {
-            if (value is not null)
-            {
-                queryDict[key] = new Microsoft.Extensions.Primitives.StringValues(value);
-            }
+            payload[key] = value;
         }
 
-        // Protect against encoded token containing a skipToken parameter
-        // which could cause confusion or conflicts
-        if (queryDict.ContainsKey("$skiptoken"))
-        {
-            queryDict.Remove("$skiptoken");
-        }
+        // Translate the fixed token keys into the first configured name for each option, so the
+        // ApiQueryOptions constructor finds them no matter which parameter names are in use.
+        // Only known keys are copied, which also keeps a nested skip token out of the result.
+        var queryDict = new Dictionary<string, StringValues>(StringComparer.OrdinalIgnoreCase);
+        CopyValue(payload, ExpandKey, resolved.ExpandParameterNames, queryDict);
+        CopyValue(payload, FilterKey, resolved.FilterParameterNames, queryDict);
+        CopyValue(payload, OrderByKey, resolved.OrderByParameterNames, queryDict);
+        CopyValue(payload, SkipKey, resolved.SkipParameterNames, queryDict);
+        CopyValue(payload, TopKey, resolved.TopParameterNames, queryDict);
 
-        var queryCollection = new QueryCollection(queryDict);
-        return new ApiQueryOptions<T>(queryCollection, settings);
+        return new ApiQueryOptions<T>(new QueryCollection(queryDict), resolved);
     }
 
     /// <summary>
@@ -88,32 +94,32 @@ public static class SkipTokenEncoder
 
         if (options.Filter is not null)
         {
-            dict["filter"] = options.Filter.RawValue;
+            dict[FilterKey] = options.Filter.RawValue;
         }
 
         if (options.Expand is not null)
         {
-            dict["expand"] = string.Join(",", options.Expand.NavigationProperties);
+            dict[ExpandKey] = string.Join(",", options.Expand.NavigationProperties);
         }
 
         if (options.OrderBy is not null)
         {
-            dict["orderby"] = string.Join(",",
+            dict[OrderByKey] = string.Join(",",
             options.OrderBy.Items.Select(i => i.Descending ? $"{i.Property} desc" : $"{i.Property} asc"));
         }
 
         if (options.Top is not null)
         {
-            dict["top"] = options.Top.Value.ToString(CultureInfo.InvariantCulture);
+            dict[TopKey] = options.Top.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         if (skipOverride.HasValue)
         {
-            dict["skip"] = skipOverride.Value.ToString(CultureInfo.InvariantCulture);
+            dict[SkipKey] = skipOverride.Value.ToString(CultureInfo.InvariantCulture);
         }
         else if (options.Skip is not null)
         {
-            dict["skip"] = options.Skip.Value.ToString(CultureInfo.InvariantCulture);
+            dict[SkipKey] = options.Skip.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         string json = JsonSerializer.Serialize(dict, _jsonOptions);
@@ -136,4 +142,16 @@ public static class SkipTokenEncoder
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
+
+    private static void CopyValue(
+        Dictionary<string, string?> payload,
+        string tokenKey,
+        IReadOnlyList<string>? parameterNames,
+        Dictionary<string, StringValues> target)
+    {
+        if (payload.TryGetValue(tokenKey, out string? value) && value is not null && parameterNames is { Count: > 0 })
+        {
+            target[parameterNames[0]] = new StringValues(value);
+        }
+    }
 }

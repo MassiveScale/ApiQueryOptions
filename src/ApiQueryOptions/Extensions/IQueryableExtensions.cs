@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 using ApiQueryOptions.Exceptions;
@@ -12,13 +13,21 @@ namespace ApiQueryOptions.Extensions;
 /// </summary>
 public static class IQueryableExtensions
 {
+    private static readonly MethodInfo _createValueAccessMethod =
+        typeof(IQueryableExtensions).GetMethod(nameof(CreateValueAccess), BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly ConcurrentDictionary<Type, Func<object, Expression>> _valueAccessFactories = new();
+
     /// <summary>
     /// Applies all non-null options from <paramref name="options"/> to <paramref name="query"/>
-    /// in the order: Filter → OrderBy → Skip → Top.
-    /// <c>Expand</c> is not applied here; use the EF Core companion package.
+    /// in the order: Filter → OrderBy → Skip → Top → Expand.
+    /// <c>Expand</c> is applied as EF Core <c>.Include()</c> calls when the
+    /// <c>ApiQueryOptions.EntityFrameworkCore</c> package is installed; no <c>using</c> for that
+    /// package is needed. Without it, or for value-type entities, <c>Expand</c> is ignored.
     /// </summary>
     public static IQueryable<T> Apply<T>(this IQueryable<T> query, ApiQueryOptions<T> options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         if (options.Filter is not null)
         {
             query = query.ApplyFilter(options.Filter, options.Settings);
@@ -37,6 +46,11 @@ public static class IQueryableExtensions
         if (options.Top is not null)
         {
             query = query.ApplyTop(options.Top, options.Settings);
+        }
+
+        if (options.Expand is not null)
+        {
+            query = ExpandApplier.Apply(query, options.Expand, options.Settings);
         }
 
         return query;
@@ -145,7 +159,7 @@ public static class IQueryableExtensions
         // Convert the constant to the property's type (handles nullable types too)
         Type targetType = Nullable.GetUnderlyingType(propExpr.Type) ?? propExpr.Type;
         object? converted = node.Value is null ? null : Convert.ChangeType(node.Value, targetType);
-        ConstantExpression constExpr = Expression.Constant(converted, propExpr.Type);
+        Expression constExpr = BuildValueExpression(converted, propExpr.Type);
 
         // For string eq/ne with OrdinalIgnoreCase, use .ToUpper() for EF Core compatibility
         if (propExpr.Type == typeof(string) && node.Operator is FilterOperator.Eq or FilterOperator.Ne &&
@@ -193,7 +207,7 @@ public static class IQueryableExtensions
         ApiQueryOptionsSettings settings)
     {
         MemberExpression propExpr = BuildPropertyAccess(param, node.Property);
-        ConstantExpression valueExpr = Expression.Constant(node.Value);
+        Expression valueExpr = BuildValueExpression(node.Value, typeof(string));
 
         string methodName = node.Function switch
         {
@@ -234,6 +248,29 @@ public static class IQueryableExtensions
     }
 
     /// <summary>
+    /// Builds the expression for a filter value. Non-null values are read through a property of a
+    /// captured holder object rather than embedded as a constant, so EF Core sends them as SQL
+    /// parameters. Inlined literals would give every distinct value its own EF query-cache entry
+    /// and its own database execution plan.
+    /// </summary>
+    private static Expression BuildValueExpression(object? value, Type type)
+    {
+        if (value is null)
+        {
+            return Expression.Constant(null, type);
+        }
+
+        Func<object, Expression> factory = _valueAccessFactories.GetOrAdd(type, static t =>
+            _createValueAccessMethod.MakeGenericMethod(t).CreateDelegate<Func<object, Expression>>());
+        return factory(value);
+    }
+
+    private static Expression CreateValueAccess<TValue>(object value) =>
+        Expression.Property(
+            Expression.Constant(new FilterValue<TValue>((TValue)value)),
+            nameof(FilterValue<TValue>.Value));
+
+    /// <summary>
     /// Builds a property access expression supporting dot-notation for nested properties.
     /// </summary>
     private static MemberExpression BuildPropertyAccess(Expression root, string propertyPath)
@@ -254,5 +291,16 @@ public static class IQueryableExtensions
         }
 
         return memberExpr!;
+    }
+
+    /// <summary>
+    /// Holds a filter value so expression trees can read it as a member access instead of a constant.
+    /// </summary>
+    private sealed class FilterValue<TValue>(TValue value)
+    {
+        /// <summary>
+        /// The filter value.
+        /// </summary>
+        public TValue Value { get; } = value;
     }
 }

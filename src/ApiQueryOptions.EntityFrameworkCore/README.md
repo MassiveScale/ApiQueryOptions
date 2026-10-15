@@ -27,10 +27,12 @@ builder.Services.AddControllers();
 builder.Services.AddApiQueryOptions();
 ```
 
-### 2. Use the EF Core `Apply` extension
+### 2. Call `Apply`
+
+With this package installed, the core `Apply` also handles `$expand`. You don't need a `using` for this package's namespace.
 
 ```csharp
-using ApiQueryOptions.EntityFrameworkCore.Extensions;
+using ApiQueryOptions.Extensions;
 
 [HttpGet]
 public async Task<IActionResult> Get(ApiQueryOptions<Order> options)
@@ -71,16 +73,19 @@ EF Core eagerly loads the `Customer` navigation property and `Lines` collection 
 ## EF Core extensions
 
 ```csharp
-using ApiQueryOptions.EntityFrameworkCore.Extensions;
+using ApiQueryOptions.Extensions;
 
 // Full pipeline — filter → orderby → skip → top → expand:
 IQueryable<T> result = query.Apply(options);
 
-// Expand only:
+// Expand only (needs this package's namespace):
+using ApiQueryOptions.EntityFrameworkCore.Extensions;
 IQueryable<T> result = query.ApplyExpand(options.Expand!, options.Settings);
 ```
 
-The EF Core `Apply` runs the core pipeline first, then appends `.Include()` calls for each path listed in `$expand`. The whole chain is deferred and translates to a single SQL round-trip.
+`Apply` runs filter, orderby, skip, and top, then appends `.Include()` calls for each path listed in `$expand`. The whole chain is deferred and translates to a single SQL round-trip. Filter values are sent as SQL parameters, so EF Core and the database reuse one cached plan per filter shape.
+
+You can import both `ApiQueryOptions.Extensions` and `ApiQueryOptions.EntityFrameworkCore.Extensions` in the same file. There is only one `Apply`, so the call is never ambiguous.
 
 ---
 

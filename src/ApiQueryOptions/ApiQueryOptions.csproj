@@ -36,4 +36,8 @@
     <PackageReference Include="Flurl" Version="4.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="ApiQueryOptions.Tests" />
+  </ItemGroup>
+
 </Project>

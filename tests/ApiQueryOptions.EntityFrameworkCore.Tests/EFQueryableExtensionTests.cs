@@ -1,5 +1,6 @@
 using ApiQueryOptions;
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
+using ApiQueryOptions.Extensions;
 using ApiQueryOptions.Exceptions;
 using ApiQueryOptions.Options;
 using Microsoft.AspNetCore.Http;

@@ -55,14 +55,14 @@ builder.Services.AddApiQueryOptions(new ApiQueryOptionsSettings
 public async Task<IActionResult> GetProducts(ApiQueryOptions<Product> options)
 {
     var query = _db.Products
-                   .Apply(options)      // EF Core: filter + orderby + skip + top + expand
+                   .Apply(options)      // filter + orderby + skip + top (+ expand with EF Core)
                    .AsNoTracking();
 
     return Ok(await query.ToListAsync());
 }
 ```
 
-> The `Apply` extension is in `ApiQueryOptions.Extensions` (core) or `ApiQueryOptions.EntityFrameworkCore.Extensions` (EF Core). Import the EF Core namespace to get `$expand` → `.Include()` support.
+> `Apply` is in `ApiQueryOptions.Extensions`. When the `ApiQueryOptions.EntityFrameworkCore` package is installed, the same `Apply` also turns `$expand` into `.Include()` calls. You don't need a `using` for the EF Core namespace.
 
 ---
 
@@ -142,7 +142,7 @@ All extension methods build deferred LINQ expression trees. Nothing is executed 
 ```csharp
 using ApiQueryOptions.Extensions;
 
-// Apply all options in one call (filter → orderby → skip → top):
+// Apply all options in one call (filter → orderby → skip → top → expand):
 IQueryable<T> result = query.Apply(options);
 
 // Or apply individual options:
@@ -152,19 +152,19 @@ query = query.ApplySkip(options.Skip!, options.Settings);
 query = query.ApplyTop(options.Top!, options.Settings);
 ```
 
-### EF Core package (`ApiQueryOptions.EntityFrameworkCore.Extensions`)
+`Apply` only handles `$expand` when the EF Core package is installed. Without it, `$expand` is ignored.
+
+### EF Core package (`ApiQueryOptions.EntityFrameworkCore`)
+
+Install the package and `Apply` turns `$expand` into `.Include()` calls. Nothing else changes in your code, and you don't need a `using` for the EF Core namespace. The whole pipeline translates to a single SQL query.
+
+To apply only `$expand`, import the EF Core namespace:
 
 ```csharp
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
 
-// Apply all options including $expand → .Include():
-IQueryable<T> result = query.Apply(options);   // filter + orderby + skip + top + expand
-
-// Apply expand separately:
 query = query.ApplyExpand(options.Expand!, options.Settings);
 ```
-
-The EF Core `Apply` calls the core pipeline first, then adds `.Include()` calls for each navigation property — the entire operation translates to a single SQL query.
 
 ---
 
@@ -221,7 +221,7 @@ var decodedOptions = SkipTokenEncoder.Decode<Product>(request.Query["$skiptoken"
 var results = await _db.Products.Apply(decodedOptions).ToListAsync();
 ```
 
-`Decode` throws `FormatException` if the token is tampered with or malformed.
+`Decode` throws `FormatException` if the token is tampered with or malformed. With model binding, a malformed `$skiptoken` is added to `ModelState` instead, so an `[ApiController]` returns `400 Bad Request`.
 
 ---
 
@@ -239,8 +239,16 @@ var settings = new ApiQueryOptionsSettings
     SkipEnabled      = true,   // accept $skip
     SkipTokenEnabled = true,   // accept $skiptoken
     StringComparison = StringComparison.OrdinalIgnoreCase,  // string eq/ne/functions
+    MaxFilterDepth     = 32,   // max parenthesis nesting in $filter
+    MaxFilterNodeCount = 100,  // max comparisons + functions + and/or in $filter
 };
 ```
+
+`MaxPageSize`, `DefaultPageSize`, `MaxFilterDepth`, and `MaxFilterNodeCount` must be positive; setting zero or a negative value throws `ArgumentOutOfRangeException` at startup. A request whose `$top` is zero or negative, or whose `$skip` is negative, is treated as if the parameter were absent.
+
+A `$filter` that exceeds `MaxFilterDepth` or `MaxFilterNodeCount` throws `FilterParseException`, the same as a syntax error. The limits stop hostile input from exhausting the stack.
+
+When `SkipTokenEnabled` is `false`, `NextLink` builds offset links instead: `$top` and `$skip` are replaced with the next page's values and every other parameter, including `$filter` and `$orderby`, is forwarded unchanged. `NextLink` returns `null` if `$skip` is disabled too, because the next page could not be requested.
 
 When an option is disabled, any matching query key is **silently ignored** at parse time — no exception is thrown. The corresponding property on `ApiQueryOptions<T>` will be `null`.
 

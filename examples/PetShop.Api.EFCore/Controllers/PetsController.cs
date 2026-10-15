@@ -1,6 +1,7 @@
 using ApiQueryOptions;
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
 using ApiQueryOptions.Exceptions;
+using ApiQueryOptions.Extensions;
 using ApiQueryOptions.Options;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -40,9 +41,9 @@ public sealed class PetsController : ControllerBase
     {
         try
         {
-            // .Apply() from ApiQueryOptions.EntityFrameworkCore.Extensions composes
-            // the full pipeline (WHERE → ORDER BY → OFFSET/FETCH → JOIN) into a
-            // single SQL round-trip when running against a real database.
+            // .Apply() composes the full pipeline (WHERE → ORDER BY → OFFSET/FETCH → JOIN)
+            // into a single SQL round-trip when running against a real database. $expand
+            // becomes JOINs because the ApiQueryOptions.EntityFrameworkCore package is installed.
             List<Pet> results = await _db.Pets
                                    .Apply(options)
                                    .AsNoTracking()
