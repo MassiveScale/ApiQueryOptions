@@ -156,7 +156,7 @@ public class EFQueryableExtensionTests : IDisposable
     public void Apply_FilterAndExpand_ComposedCorrectly()
     {
         ApiQueryOptions<BlogPost> opts = Options(("$filter", "Title eq 'Alpha Post'"), ("$expand", "Comments"));
-        var result = _db.Posts.Apply(opts).ToList();
+        var result = _db.Posts.ApplyWithExpand(opts).ToList();
 
         result.Should().ContainSingle();
         result[0].Title.Should().Be("Alpha Post");
@@ -167,7 +167,7 @@ public class EFQueryableExtensionTests : IDisposable
     public void Apply_TopAndExpand_ComposedCorrectly()
     {
         ApiQueryOptions<BlogPost> opts = Options(("$top", "2"), ("$expand", "Author"));
-        var result = _db.Posts.Apply(opts).ToList();
+        var result = _db.Posts.ApplyWithExpand(opts).ToList();
 
         result.Should().HaveCount(2);
         result.Should().AllSatisfy(p => p.Author.Should().NotBeNull());
@@ -178,7 +178,7 @@ public class EFQueryableExtensionTests : IDisposable
     {
         ApiQueryOptions<BlogPost> opts = Options(("$top", "1"));
         // Should not throw even though Expand is null
-        var result = _db.Posts.Apply(opts).ToList();
+        var result = _db.Posts.ApplyWithExpand(opts).ToList();
         result.Should().HaveCount(1);
     }
 

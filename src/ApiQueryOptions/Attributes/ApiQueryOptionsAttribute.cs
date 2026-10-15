@@ -62,21 +62,33 @@ public sealed class ApiQueryOptionsAttribute : Attribute
     /// <summary>
     /// Returns a new <see cref="ApiQueryOptionsSettings"/> that is a copy of
     /// <paramref name="settings"/> with the overrides defined by this attribute applied.
+    /// Settings this attribute cannot override (such as the <c>*ParameterNames</c> lists) are
+    /// copied unchanged.
     /// </summary>
     /// <param name="settings">The base settings to copy and selectively override.</param>
     public ApiQueryOptionsSettings ApplyTo(ApiQueryOptionsSettings settings)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+
         return new ApiQueryOptionsSettings
         {
             DefaultPageSize = DefaultPageSize > 0 ? DefaultPageSize : settings.DefaultPageSize,
             ExpandEnabled = Resolve(ExpandEnabled, settings.ExpandEnabled),
+            ExpandParameterNames = settings.ExpandParameterNames,
             FilterEnabled = Resolve(FilterEnabled, settings.FilterEnabled),
+            FilterParameterNames = settings.FilterParameterNames,
+            MaxFilterDepth = settings.MaxFilterDepth,
+            MaxFilterNodeCount = settings.MaxFilterNodeCount,
             MaxPageSize = MaxPageSize > 0 ? MaxPageSize : settings.MaxPageSize,
             OrderByEnabled = Resolve(OrderByEnabled, settings.OrderByEnabled),
+            OrderByParameterNames = settings.OrderByParameterNames,
             SkipEnabled = Resolve(SkipEnabled, settings.SkipEnabled),
+            SkipParameterNames = settings.SkipParameterNames,
             SkipTokenEnabled = Resolve(SkipTokenEnabled, settings.SkipTokenEnabled),
+            SkipTokenParameterNames = settings.SkipTokenParameterNames,
             StringComparison = settings.StringComparison,
             TopEnabled = Resolve(TopEnabled, settings.TopEnabled),
+            TopParameterNames = settings.TopParameterNames,
         };
     }
 

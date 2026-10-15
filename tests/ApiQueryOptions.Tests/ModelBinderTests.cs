@@ -299,6 +299,133 @@ public class ModelBinderTests
         result.Top!.Value.Should().Be(10);
         result.Settings.MaxPageSize.Should().Be(100);
     }
+
+    [TestMethod]
+    public async Task ModelBinder_BoundInstance_NextLinkIsAbsoluteUrl()
+    {
+        DefaultHttpContext httpContext = BuildHttpContext(("$top", "2"), ("tenant", "a"));
+        httpContext.Request.Scheme = "https";
+        httpContext.Request.Host = new HostString("api.example.com");
+        httpContext.Request.Path = "/pets";
+        var binder = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), new ApiQueryOptionsSettings());
+        DefaultModelBindingContext ctx = BuildBindingContext(httpContext, typeof(ApiQueryOptions<BinderEntity>));
+
+        await binder.BindModelAsync(ctx);
+
+        ApiQueryOptions<BinderEntity> result = ctx.Result.Model.Should().BeOfType<ApiQueryOptions<BinderEntity>>().Subject;
+        string? nextLink = result.NextLink(resultCount: 2);
+        nextLink.Should().StartWith("https://api.example.com/pets?tenant=a&$skiptoken=");
+    }
+
+    [TestMethod]
+    public async Task ModelBinder_MalformedSkipToken_AddsModelStateError()
+    {
+        DefaultHttpContext httpContext = BuildHttpContext(("$skiptoken", "!!!not-a-token!!!"));
+        var binder = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), new ApiQueryOptionsSettings());
+        DefaultModelBindingContext ctx = BuildBindingContext(httpContext, typeof(ApiQueryOptions<BinderEntity>));
+
+        await binder.BindModelAsync(ctx);
+
+        ctx.Result.IsModelSet.Should().BeFalse();
+        ctx.ModelState.IsValid.Should().BeFalse();
+        ctx.ModelState["$skiptoken"]!.Errors.Should().ContainSingle()
+            .Which.ErrorMessage.Should().Contain("skip token");
+    }
+
+    [TestMethod]
+    public async Task ModelBinder_MalformedSkipToken_CustomName_UsesConfiguredKey()
+    {
+        var settings = new ApiQueryOptionsSettings { SkipTokenParameterNames = ["cursor"] };
+        string notJson = Convert.ToBase64String("not json"u8.ToArray()).TrimEnd('=');
+        DefaultHttpContext httpContext = BuildHttpContext(("cursor", notJson));
+        var binder = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), settings);
+        DefaultModelBindingContext ctx = BuildBindingContext(httpContext, typeof(ApiQueryOptions<BinderEntity>));
+
+        await binder.BindModelAsync(ctx);
+
+        ctx.Result.IsModelSet.Should().BeFalse();
+        ctx.ModelState.Should().ContainKey("cursor");
+    }
+
+    [TestMethod]
+    public async Task ModelBinder_SameAction_ReusesResolvedSettings()
+    {
+        ControllerActionDescriptor descriptor = BuildControllerDescriptor(
+            typeof(ClassAttributeController).GetMethod(nameof(ClassAttributeController.SomeAction))!);
+        var binder = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), new ApiQueryOptionsSettings());
+        DefaultModelBindingContext first = BuildBindingContext(BuildHttpContext(), typeof(ApiQueryOptions<BinderEntity>), descriptor);
+        DefaultModelBindingContext second = BuildBindingContext(BuildHttpContext(), typeof(ApiQueryOptions<BinderEntity>), descriptor);
+
+        await binder.BindModelAsync(first);
+        await binder.BindModelAsync(second);
+
+        var firstResult = (ApiQueryOptions<BinderEntity>)first.Result.Model!;
+        var secondResult = (ApiQueryOptions<BinderEntity>)second.Result.Model!;
+        firstResult.Settings.Should().BeSameAs(secondResult.Settings);
+        firstResult.Settings.DefaultPageSize.Should().Be(30);
+    }
+
+    [TestMethod]
+    public async Task ModelBinder_ControllerActionWithoutAttribute_UsesRegisteredSettingsInstance()
+    {
+        ControllerActionDescriptor descriptor = BuildControllerDescriptor(
+            typeof(MethodAttributeController).GetMethod(nameof(MethodAttributeController.NoAttributeAction))!);
+        var settings = new ApiQueryOptionsSettings();
+        var binder = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), settings);
+        DefaultModelBindingContext ctx = BuildBindingContext(BuildHttpContext(), typeof(ApiQueryOptions<BinderEntity>), descriptor);
+
+        await binder.BindModelAsync(ctx);
+
+        ((ApiQueryOptions<BinderEntity>)ctx.Result.Model!).Settings.Should().BeSameAs(settings);
+    }
+
+    [TestMethod]
+    public async Task ModelBinder_AttributeOverride_KeepsCustomParameterNames()
+    {
+        var settings = new ApiQueryOptionsSettings { FilterParameterNames = ["q"], TopParameterNames = ["limit"] };
+        DefaultHttpContext httpContext = BuildHttpContext(("q", "Name eq 'x'"), ("limit", "500"));
+        ControllerActionDescriptor descriptor = BuildControllerDescriptor(
+            typeof(MethodAttributeController).GetMethod(nameof(MethodAttributeController.MaxPageSizeAction))!);
+        var binder = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), settings);
+        DefaultModelBindingContext ctx = BuildBindingContext(httpContext, typeof(ApiQueryOptions<BinderEntity>), descriptor);
+
+        await binder.BindModelAsync(ctx);
+
+        ApiQueryOptions<BinderEntity> result = ctx.Result.Model.Should().BeOfType<ApiQueryOptions<BinderEntity>>().Subject;
+        result.Filter!.RawValue.Should().Be("Name eq 'x'");
+        result.Top!.Value.Should().Be(50);
+    }
+
+    [TestMethod]
+    [DataRow(typeof(string))]
+    [DataRow(typeof(List<int>))]
+    [DataRow(typeof(ApiQueryOptions<>))]
+    public void ModelBinder_Ctor_NotClosedApiQueryOptionsType_ThrowsArgumentException(Type type)
+    {
+        Action act = () => _ = new ApiQueryOptionsModelBinder(type, new ApiQueryOptionsSettings());
+
+        act.Should().Throw<ArgumentException>().WithParameterName("optionsType");
+    }
+
+    [TestMethod]
+    public void ModelBinder_Ctor_NullArguments_ThrowArgumentNull()
+    {
+        Action nullType = () => _ = new ApiQueryOptionsModelBinder(null!, new ApiQueryOptionsSettings());
+        Action nullSettings = () => _ = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), null!);
+
+        nullType.Should().Throw<ArgumentNullException>().WithParameterName("optionsType");
+        nullSettings.Should().Throw<ArgumentNullException>().WithParameterName("settings");
+    }
+
+    [TestMethod]
+    public async Task ModelBinder_BindModelAsync_NullContext_ThrowsArgumentNull()
+    {
+        var binder = new ApiQueryOptionsModelBinder(typeof(ApiQueryOptions<BinderEntity>), new ApiQueryOptionsSettings());
+
+        Func<Task> act = () => binder.BindModelAsync(null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>();
+    }
 }
 
 [ApiQueryOptions(DefaultPageSize = 30, MaxPageSize = 75)]

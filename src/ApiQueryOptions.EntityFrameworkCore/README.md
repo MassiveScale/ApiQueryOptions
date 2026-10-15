@@ -27,7 +27,7 @@ builder.Services.AddControllers();
 builder.Services.AddApiQueryOptions();
 ```
 
-### 2. Use the EF Core `Apply` extension
+### 2. Use the EF Core `ApplyWithExpand` extension
 
 ```csharp
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
@@ -36,7 +36,7 @@ using ApiQueryOptions.EntityFrameworkCore.Extensions;
 public async Task<IActionResult> Get(ApiQueryOptions<Order> options)
 {
     List<Order> items = await _db.Orders
-                                 .Apply(options)        // filter + orderby + skip + top + expand
+                                 .ApplyWithExpand(options)   // filter + orderby + skip + top + expand
                                  .AsNoTracking()
                                  .ToListAsync();
 
@@ -74,13 +74,15 @@ EF Core eagerly loads the `Customer` navigation property and `Lines` collection 
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
 
 // Full pipeline — filter → orderby → skip → top → expand:
-IQueryable<T> result = query.Apply(options);
+IQueryable<T> result = query.ApplyWithExpand(options);
 
 // Expand only:
 IQueryable<T> result = query.ApplyExpand(options.Expand!, options.Settings);
 ```
 
-The EF Core `Apply` runs the core pipeline first, then appends `.Include()` calls for each path listed in `$expand`. The whole chain is deferred and translates to a single SQL round-trip.
+`ApplyWithExpand` runs the core pipeline first, then appends `.Include()` calls for each path listed in `$expand`. The whole chain is deferred and translates to a single SQL round-trip. Filter values are sent as SQL parameters, so EF Core and the database reuse one cached plan per filter shape.
+
+`ApplyWithExpand` has a different name from the core `Apply` so `ApiQueryOptions.Extensions` and `ApiQueryOptions.EntityFrameworkCore.Extensions` can both be imported in the same file without an ambiguous call.
 
 ---
 

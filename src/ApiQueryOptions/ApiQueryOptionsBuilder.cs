@@ -38,6 +38,18 @@ public sealed class ApiQueryOptionsBuilder
     public IReadOnlyList<string> FilterParameterNames { get; set; } = ["$filter", "filter"];
 
     /// <summary>
+    /// The maximum parenthesis nesting depth allowed in a <c>$filter</c> expression.
+    /// Default: <see cref="ApiQueryOptionsSettings.DefaultMaxFilterDepth"/>.
+    /// </summary>
+    public int MaxFilterDepth { get; set; } = ApiQueryOptionsSettings.DefaultMaxFilterDepth;
+
+    /// <summary>
+    /// The maximum number of nodes allowed in a <c>$filter</c> expression.
+    /// Default: <see cref="ApiQueryOptionsSettings.DefaultMaxFilterNodeCount"/>.
+    /// </summary>
+    public int MaxFilterNodeCount { get; set; } = ApiQueryOptionsSettings.DefaultMaxFilterNodeCount;
+
+    /// <summary>
     /// The maximum value the caller may supply for <c>$top</c>. When a request exceeds this
     /// limit the value is silently clamped to <see cref="MaxPageSize"/>.
     /// <c>null</c> means no upper limit is enforced. Default: <c>null</c>.
@@ -97,6 +109,7 @@ public sealed class ApiQueryOptionsBuilder
     /// <summary>
     /// Builds an immutable <see cref="ApiQueryOptionsSettings"/> from the current builder state.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">When a page size or filter limit is zero or negative.</exception>
     internal ApiQueryOptionsSettings Build() =>
         new()
         {
@@ -105,6 +118,8 @@ public sealed class ApiQueryOptionsBuilder
             ExpandParameterNames = ExpandParameterNames,
             FilterEnabled = FilterEnabled,
             FilterParameterNames = FilterParameterNames,
+            MaxFilterDepth = MaxFilterDepth,
+            MaxFilterNodeCount = MaxFilterNodeCount,
             MaxPageSize = MaxPageSize,
             OrderByEnabled = OrderByEnabled,
             OrderByParameterNames = OrderByParameterNames,

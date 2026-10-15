@@ -40,11 +40,11 @@ public sealed class PetsController : ControllerBase
     {
         try
         {
-            // .Apply() from ApiQueryOptions.EntityFrameworkCore.Extensions composes
+            // .ApplyWithExpand() from ApiQueryOptions.EntityFrameworkCore.Extensions composes
             // the full pipeline (WHERE → ORDER BY → OFFSET/FETCH → JOIN) into a
             // single SQL round-trip when running against a real database.
             List<Pet> results = await _db.Pets
-                                   .Apply(options)
+                                   .ApplyWithExpand(options)
                                    .AsNoTracking()
                                    .ToListAsync();
 
@@ -97,7 +97,7 @@ public sealed class PetsController : ControllerBase
         try
         {
             List<Owner> results = await _db.Owners
-                                   .Apply(options)
+                                   .ApplyWithExpand(options)
                                    .AsNoTracking()
                                    .ToListAsync();
 

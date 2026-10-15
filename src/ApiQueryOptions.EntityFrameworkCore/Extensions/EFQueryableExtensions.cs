@@ -17,10 +17,14 @@ public static class EFQueryableExtensions
     /// Applies all non-null options from <paramref name="options"/> to <paramref name="query"/>:
     /// Filter → OrderBy → Skip → Top → Expand (Include).
     /// The entire pipeline — WHERE, ORDER BY, OFFSET, LIMIT, and JOINs — is sent as a single SQL round-trip.
+    /// This method has a distinct name from the core <c>IQueryableExtensions.Apply</c> so both
+    /// namespaces can be imported in the same file without an ambiguous call.
     /// </summary>
-    public static IQueryable<T> Apply<T>(this IQueryable<T> query, ApiQueryOptions<T> options)
+    public static IQueryable<T> ApplyWithExpand<T>(this IQueryable<T> query, ApiQueryOptions<T> options)
         where T : class
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         // Apply core options (filter / orderby / skip / top) via the core extension
         query = IQueryableExtensions.Apply(query, options);
 

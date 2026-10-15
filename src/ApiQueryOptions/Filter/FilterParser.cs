@@ -15,19 +15,53 @@ namespace ApiQueryOptions.Filter;
 /// op         → 'eq'|'ne'|'lt'|'gt'|'le'|'ge'
 /// value      → string | int | decimal | bool | null
 /// </code>
+/// Parenthesis nesting depth and the total node count are bounded so that hostile input
+/// cannot exhaust the stack or build an arbitrarily large expression tree.
 /// </summary>
 public sealed class FilterParser
 {
+    private readonly int _maxDepth;
+    private readonly int _maxNodeCount;
+    private int _depth;
+    private int _nodeCount;
     private int _pos;
     private string _raw = null!;
     private List<Token> _tokens = null!;
+
+    /// <summary>
+    /// Initializes a new parser using <see cref="ApiQueryOptionsSettings.DefaultMaxFilterDepth"/>
+    /// and <see cref="ApiQueryOptionsSettings.DefaultMaxFilterNodeCount"/>.
+    /// </summary>
+    public FilterParser()
+        : this(ApiQueryOptionsSettings.DefaultMaxFilterDepth, ApiQueryOptionsSettings.DefaultMaxFilterNodeCount)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new parser with explicit limits.
+    /// </summary>
+    /// <param name="maxDepth">The maximum parenthesis nesting depth. Must be positive.</param>
+    /// <param name="maxNodeCount">
+    /// The maximum number of comparison, function, and logical nodes. Must be positive.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">When either limit is zero or negative.</exception>
+    public FilterParser(int maxDepth, int maxNodeCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxDepth);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxNodeCount);
+
+        _maxDepth = maxDepth;
+        _maxNodeCount = maxNodeCount;
+    }
 
     /// <summary>
     /// Parses a raw OData-style <c>$filter</c> string into a <see cref="FilterClause"/> AST.
     /// </summary>
     /// <param name="rawFilter">The raw filter expression, e.g. <c>Species eq 'Dog' and IsAvailable eq true</c>.</param>
     /// <returns>A <see cref="FilterClause"/> containing the root AST node.</returns>
-    /// <exception cref="Exceptions.FilterParseException">Thrown when the expression cannot be parsed.</exception>
+    /// <exception cref="Exceptions.FilterParseException">
+    /// Thrown when the expression cannot be parsed, or when it exceeds the nesting depth or node count limit.
+    /// </exception>
     public FilterClause Parse(string rawFilter)
     {
         if (string.IsNullOrWhiteSpace(rawFilter))
@@ -38,6 +72,8 @@ public sealed class FilterParser
         _raw = rawFilter;
         _tokens = new FilterLexer(rawFilter).Tokenize();
         _pos = 0;
+        _depth = 0;
+        _nodeCount = 0;
 
         FilterNode node = ParseOr();
         Expect(TokenKind.Eof);
@@ -53,6 +89,17 @@ public sealed class FilterParser
         }
 
         return tok;
+    }
+
+    private void CountNode(int position)
+    {
+        _nodeCount++;
+        if (_nodeCount > _maxNodeCount)
+        {
+            throw new FilterParseException(
+                $"Filter expression exceeds the maximum of {_maxNodeCount} nodes at position {position}.",
+                _raw, position);
+        }
     }
 
     private void Expect(TokenKind kind)
@@ -90,7 +137,8 @@ public sealed class FilterParser
         FilterNode left = ParsePrimary();
         while (PeekIdentifier("and"))
         {
-            Consume(); // 'and'
+            Token andToken = Consume();
+            CountNode(andToken.Position);
             FilterNode right = ParsePrimary();
             left = new LogicalFilterNode(left, LogicalOperator.And, right);
         }
@@ -101,6 +149,7 @@ public sealed class FilterParser
     {
         Token propToken = ExpectKind(TokenKind.Identifier, "property name");
         string property = propToken.Raw;
+        CountNode(propToken.Position);
 
         Token opToken = ExpectKind(TokenKind.Identifier, "operator (eq, ne, lt, gt, le, ge)");
         FilterOperator op = opToken.Raw.ToLowerInvariant() switch
@@ -132,6 +181,7 @@ public sealed class FilterParser
                     $"Unknown function '{funcToken.Raw}' at position {funcToken.Position}.",
                     _raw, funcToken.Position)
         };
+        CountNode(funcToken.Position);
 
         Expect(TokenKind.LParen);
 
@@ -153,7 +203,8 @@ public sealed class FilterParser
         FilterNode left = ParseAnd();
         while (PeekIdentifier("or"))
         {
-            Consume(); // 'or'
+            Token orToken = Consume();
+            CountNode(orToken.Position);
             FilterNode right = ParseAnd();
             left = new LogicalFilterNode(left, LogicalOperator.Or, right);
         }
@@ -166,9 +217,18 @@ public sealed class FilterParser
 
         if (tok.Kind == TokenKind.LParen)
         {
+            if (_depth >= _maxDepth)
+            {
+                throw new FilterParseException(
+                    $"Filter expression exceeds the maximum nesting depth of {_maxDepth} at position {tok.Position}.",
+                    _raw, tok.Position);
+            }
+
             Consume(); // '('
+            _depth++;
             FilterNode inner = ParseOr();
             Expect(TokenKind.RParen);
+            _depth--;
             return inner;
         }
 
