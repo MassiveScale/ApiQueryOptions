@@ -69,7 +69,7 @@ public class ProductsController : ControllerBase
 }
 ```
 
-Unset properties (`0` for integers, `QueryOptionState.Default` for toggles) inherit from the registered settings unchanged.
+The attribute can also set `StringMatching` and `TieBreakerProperty`. Unset properties (`0` for integers, `null` for `TieBreakerProperty`, `QueryOptionState.Default` for toggles, and a `StringMatching` that is never assigned) inherit from the registered settings unchanged.
 
 ---
 
@@ -101,7 +101,7 @@ Both the `$`-prefixed OData form (`$filter=...`) and the bare form (`filter=...`
 | `le`     | Less than or equal    | `Score le 100`         |
 | `ge`     | Greater than or equal | `Score ge 0`           |
 
-String `eq`/`ne` comparisons respect the `StringComparison` in `ApiQueryOptionsSettings` (default: `OrdinalIgnoreCase`).
+String comparisons, including `lt`, `gt`, `le`, and `ge`, follow the `StringMatching` setting (default: case-insensitive). See [String matching](#string-matching).
 
 ### Logical operators
 
@@ -121,13 +121,19 @@ $filter=(Region eq 'US' or Region eq 'CA') and IsActive eq true
 
 ### Literal types
 
-| Type    | Example                           |
-| ------- | --------------------------------- |
-| String  | `'O''Brien'` (escape `'` as `''`) |
-| Integer | `42`, `-5`                        |
-| Decimal | `9.99`                            |
-| Boolean | `true`, `false`                   |
-| Null    | `null`                            |
+| Type          | Example                                  | Notes                                                                                                                  |
+|---------------|------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| String        | `'O''Brien'`                             | Escape `'` as `''`                                                                                                     |
+| Integer       | `42`, `-5`, `5000000000`                 | Values outside the `int` range are read as `long`, then `decimal`                                                      |
+| Decimal       | `9.99`                                   | Rejected for an integer property instead of being rounded                                                              |
+| Boolean       | `true`, `false`                          |                                                                                                                        |
+| Null          | `null`                                   | Only with `eq` and `ne`                                                                                                |
+| Date and time | `'2024-01-15'`, `'2024-01-15T10:30:00Z'` | Written as a string; read as `DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly`, or `TimeSpan` to match the property |
+| GUID          | `'5f0c2b8e-8f3a-4c51-9d6e-2a7b1c0d9e4f'` | Written as a string                                                                                                    |
+| Enum          | `'Active'`, `1`                          | Member name in any case, or its number                                                                                 |
+
+Values are converted to the property's type with the invariant culture. A value that does not fit, such as Age eq 1.5 on an int property, throws InvalidQueryOptionException.
+
 
 ### Dotted property paths
 
@@ -196,25 +202,26 @@ query = query.ApplyTop(options.Top!, settings);
 
 All properties use `init`-only setters and default to the most permissive values.
 
-| Property                  | Type                    | Default                       | Description                                       |
-|---------------------------|-------------------------|-------------------------------|---------------------------------------------------|
-| `FilterEnabled`           | `bool`                  | `true`                        | Accept `$filter`                                  |
-| `ExpandEnabled`           | `bool`                  | `true`                        | Accept `$expand`                                  |
-| `OrderByEnabled`          | `bool`                  | `true`                        | Accept `$orderby`                                 |
-| `TopEnabled`              | `bool`                  | `true`                        | Accept `$top`                                     |
-| `SkipEnabled`             | `bool`                  | `true`                        | Accept `$skip`                                    |
-| `SkipTokenEnabled`        | `bool`                  | `true`                        | Accept `$skiptoken`                               |
-| `MaxPageSize`             | `int?`                  | `null`                        | Upper limit for `$top`; silently clamps           |
-| `DefaultPageSize`         | `int?`                  | `null`                        | Default `$top` when none provided                 |
-| `MaxFilterDepth`          | `int`                   | `32`                          | Max parenthesis nesting in `$filter`              |
-| `MaxFilterNodeCount`      | `int`                   | `100`                         | Max comparisons, functions, and `and`/`or` nodes  |
-| `StringComparison`        | `StringComparison`      | `OrdinalIgnoreCase`           | Used for string `eq`/`ne` and functions           |
-| `FilterParameterNames`    | `IReadOnlyList<string>` | `["$filter", "filter"]`       | Query keys recognised as `$filter`                |
-| `ExpandParameterNames`    | `IReadOnlyList<string>` | `["$expand", "expand"]`       | Query keys recognised as `$expand`                |
-| `OrderByParameterNames`   | `IReadOnlyList<string>` | `["$orderby", "orderby"]`     | Query keys recognised as `$orderby`               |
-| `TopParameterNames`       | `IReadOnlyList<string>` | `["$top", "top"]`             | Query keys recognised as `$top`                   |
-| `SkipParameterNames`      | `IReadOnlyList<string>` | `["$skip", "skip"]`           | Query keys recognised as `$skip`                  |
-| `SkipTokenParameterNames` | `IReadOnlyList<string>` | `["$skiptoken", "skiptoken"]` | Query keys recognised as `$skiptoken`             |
+| Property                  | Type                    | Default                       | Description                                      |
+|---------------------------|-------------------------|-------------------------------|--------------------------------------------------|
+| `FilterEnabled`           | `bool`                  | `true`                        | Accept `$filter`                                 |
+| `ExpandEnabled`           | `bool`                  | `true`                        | Accept `$expand`                                 |
+| `OrderByEnabled`          | `bool`                  | `true`                        | Accept `$orderby`                                |
+| `TopEnabled`              | `bool`                  | `true`                        | Accept `$top`                                    |
+| `SkipEnabled`             | `bool`                  | `true`                        | Accept `$skip`                                   |
+| `SkipTokenEnabled`        | `bool`                  | `true`                        | Accept `$skiptoken`                              |
+| `MaxPageSize`             | `int?`                  | `null`                        | Upper limit for `$top`; silently clamps          |
+| `DefaultPageSize`         | `int?`                  | `null`                        | Default `$top` when none provided                |
+| `MaxFilterDepth`          | `int`                   | `32`                          | Max parenthesis nesting in `$filter`             |
+| `MaxFilterNodeCount`      | `int`                   | `100`                         | Max comparisons, functions, and `and`/`or` nodes |
+| `StringMatching`          | `StringMatching`        | `IgnoreCase`                  | How `$filter` compares strings                   |
+| `TieBreakerProperty`      | `string?`               | `null`                        | Unique sort column appended when paging          |
+| `FilterParameterNames`    | `IReadOnlyList<string>` | `["$filter", "filter"]`       | Query keys recognised as `$filter`               |
+| `ExpandParameterNames`    | `IReadOnlyList<string>` | `["$expand", "expand"]`       | Query keys recognised as `$expand`               |
+| `OrderByParameterNames`   | `IReadOnlyList<string>` | `["$orderby", "orderby"]`     | Query keys recognised as `$orderby`              |
+| `TopParameterNames`       | `IReadOnlyList<string>` | `["$top", "top"]`             | Query keys recognised as `$top`                  |
+| `SkipParameterNames`      | `IReadOnlyList<string>` | `["$skip", "skip"]`           | Query keys recognised as `$skip`                 |
+| `SkipTokenParameterNames` | `IReadOnlyList<string>` | `["$skiptoken", "skiptoken"]` | Query keys recognised as `$skiptoken`            |
 
 The page sizes and filter limits must be positive; zero or a negative value throws `ArgumentOutOfRangeException`. A `$top` of zero or less, or a negative `$skip`, is ignored like an absent parameter. A `$filter` that exceeds either filter limit throws `FilterParseException`.
 
@@ -222,16 +229,33 @@ When an option is disabled, any matching query key is silently ignored and the c
 
 `*ParameterNames` lists are tried left-to-right; the first match wins. Custom names are automatically excluded from `NextLink` query-string passthrough.
 
+### String matching
+| Value                  | In memory                            | Database providers (EF Core)                                                                                         |
+|------------------------|--------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `IgnoreCase` (default) | `StringComparison.OrdinalIgnoreCase` | `UPPER(column)` compared with a parameter upper-cased on the server. The database cannot use an index on the column. |
+| `CaseSensitive`        | `StringComparison.Ordinal`           | Plain comparison. Case-sensitive only when the column collation is.                                                  |
+| `Database`             | Plain .NET operators and methods     | Plain comparison. The column collation decides, and indexes can be used.                                             |
+
+`IgnoreCase` is culture-invariant and null-safe: rows with a `null` value never match a string function or an ordering operator, and `Name eq null` becomes a plain null check.
+
+On EF Core, `IgnoreCase` wraps the column in `UPPER()`, which stops the database from using an index on it. For large tables, give the column a case-insensitive collation and use `StringMatching.Database`.
+
+### Stable paging
+
+Paging is only stable when the sort order is unique; otherwise rows with equal sort values can move between pages. Set `TieBreakerProperty` to a unique column such as `Id`. When `Apply` applies `$top` or `$skip`, it appends that column to the sort (or sorts by it alone when there is no `$orderby`), unless `$orderby` already includes it. An unknown tie-breaker throws `InvalidQueryOptionException`.
+
 ---
 
 ## Error handling
 
-| Exception                      | When                                                                                          |
-| ------------------------------ | --------------------------------------------------------------------------------------------- |
-| `FilterParseException`         | `$filter` contains a syntax error — exposes `RawFilter` and `Position`                        |
-| `QueryOptionDisabledException` | An `Apply*` method is called directly against a disabled option                               |
-| `FormatException`              | `SkipTokenEncoder.Decode` receives a malformed or tampered token                              |
-| `InvalidOperationException`    | A filter or orderby expression references a property that does not exist on `T`               |
+| Exception                      | Base type                   | When                                                                                                                                                                                   |
+|--------------------------------|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `FilterParseException`         | `ApiQueryOptionsException`  | The `$filter` string has a syntax error or exceeds a filter limit. Exposes `RawFilter` and `Position`.                                                                                 |
+| `InvalidQueryOptionException`  | `ApiQueryOptionsException`  | An option names an unknown property, uses a value that does not fit the property type, or uses an operator or function the type does not support. Exposes `OptionName` and `Property`. |
+| `QueryOptionDisabledException` | `InvalidOperationException` | An `Apply*` method is called directly against a disabled option. This is a programming error, not bad client input.                                                                    |
+| `FormatException`              | `SystemException`           | `SkipTokenEncoder.Decode` receives a malformed or tampered token.                                                                                                                      |
+
+Every exception caused by bad client input derives from ApiQueryOptionsException, so one catch (ApiQueryOptionsException) can return 400 Bad Request for all of them.
 
 ---
 
@@ -239,13 +263,13 @@ When an option is disabled, any matching query key is silently ignored and the c
 
 ```csharp
 // From an HttpRequest (minimal API or middleware):
-ApiQueryOptions<Product> options = ApiQueryOptions.FromRequest<Product>(request, settings);
+ApiQueryOptions<Product> options = ApiQueryOptions<Product>.FromRequest(request, settings);
 
 // From an HttpContext — safe when context is null (returns empty no-op instance):
-ApiQueryOptions<Product> options = ApiQueryOptions.FromRequest<Product>(httpContext, settings);
+ApiQueryOptions<Product> options = ApiQueryOptions<Product>.FromRequest(httpContext, settings);
 
 // From an IHttpContextAccessor (in a service):
-ApiQueryOptions<Product> options = ApiQueryOptions.FromRequest<Product>(httpContextAccessor, settings);
+ApiQueryOptions<Product> options = ApiQueryOptions<Product>.FromRequest(httpContextAccessor, settings);
 
 // From any IQueryCollection:
 ApiQueryOptions<Product> options = new(queryCollection, settings);

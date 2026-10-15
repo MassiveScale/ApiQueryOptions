@@ -51,17 +51,9 @@ public sealed class PetsController : ControllerBase
 
             return Ok(PagedResponse.Create(results, options, Request));
         }
-        catch (FilterParseException ex)
+        catch (ApiQueryOptionsException ex)
         {
-            return BadRequest(new
-            {
-                error = "Invalid $filter expression.",
-                detail = ex.Message,
-                position = ex.Position,
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
+            // Every client mistake in $filter, $orderby, or $expand derives from ApiQueryOptionsException.
             return BadRequest(new { error = ex.Message });
         }
     }
@@ -79,7 +71,14 @@ public sealed class PetsController : ControllerBase
 
         if (options.Expand is not null)
         {
-            query = query.ApplyExpand(options.Expand, options.Settings);
+            try
+            {
+                query = query.ApplyExpand(options.Expand, options.Settings);
+            }
+            catch (ApiQueryOptionsException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
 
         Pet? pet = await query.AsNoTracking().FirstOrDefaultAsync();
@@ -104,14 +103,9 @@ public sealed class PetsController : ControllerBase
 
             return Ok(PagedResponse.Create(results, options, Request));
         }
-        catch (FilterParseException ex)
+        catch (ApiQueryOptionsException ex)
         {
-            return BadRequest(new
-            {
-                error = "Invalid $filter expression.",
-                detail = ex.Message,
-                position = ex.Position,
-            });
+            return BadRequest(new { error = ex.Message });
         }
     }
 }

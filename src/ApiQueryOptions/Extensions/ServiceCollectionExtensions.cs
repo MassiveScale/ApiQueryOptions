@@ -1,6 +1,8 @@
 using ApiQueryOptions.Binding;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace ApiQueryOptions.Extensions;
 
@@ -13,6 +15,8 @@ public static class ServiceCollectionExtensions
     /// Registers the <see cref="ApiQueryOptionsModelBinderProvider"/> and optionally
     /// a singleton <see cref="ApiQueryOptionsSettings"/> so that all auto-bound
     /// <see cref="ApiQueryOptions{T}"/> parameters share the same configuration.
+    /// Calling it more than once registers the model binder provider once and keeps the
+    /// settings from the last call.
     /// </summary>
     /// <example>
     /// <code>
@@ -25,10 +29,10 @@ public static class ServiceCollectionExtensions
         ApiQueryOptionsSettings? settings = null)
     {
         ApiQueryOptionsSettings resolved = settings ?? new ApiQueryOptionsSettings();
+        services.RemoveAll<ApiQueryOptionsSettings>();
         services.AddSingleton(resolved);
 
-        services.Configure<MvcOptions>(options =>
-            options.ModelBinderProviders.Insert(0, new ApiQueryOptionsModelBinderProvider()));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<MvcOptions>, ApiQueryOptionsMvcOptionsSetup>());
 
         return services;
     }

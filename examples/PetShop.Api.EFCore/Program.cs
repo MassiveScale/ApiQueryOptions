@@ -9,10 +9,12 @@ builder.Services.AddControllers();
 
 // Register ApiQueryOptions — all options enabled by default.
 // The EF Core example uses $expand, so ExpandEnabled must stay true.
+// TieBreakerProperty keeps paging stable when several pets share the same $orderby value.
 builder.Services.AddApiQueryOptions(new ApiQueryOptionsSettings()
 {
-     DefaultPageSize = 10,
-     MaxPageSize = 100
+    DefaultPageSize = 10,
+    MaxPageSize = 100,
+    TieBreakerProperty = "Id",
 });
 
 // Use an in-memory database so the example runs without any external dependency.

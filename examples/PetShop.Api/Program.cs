@@ -13,7 +13,10 @@ builder.Services.AddControllers();
 //       ExpandEnabled    = false,   // no $expand — this example has no navigation properties
 //       SkipTokenEnabled = false,   // using offset paging ($top / $skip) instead
 //   });
-builder.Services.AddApiQueryOptions();
+//
+// TieBreakerProperty keeps $top/$skip paging stable when several pets share the same
+// $orderby value (for example, two dogs with the same AdoptionFee).
+builder.Services.AddApiQueryOptions(o => o.TieBreakerProperty = "Id");
 
 WebApplication app = builder.Build();
 

@@ -1,7 +1,9 @@
 using System.Globalization;
+using System.Text;
 using ApiQueryOptions.Options;
 using ApiQueryOptions.SkipToken;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Primitives;
 
 namespace ApiQueryOptions;
@@ -13,11 +15,12 @@ namespace ApiQueryOptions;
 public sealed class ApiQueryOptions<T>
 {
     private readonly HttpRequest? httpRequest;
-    private readonly HashSet<string> ownedQueryParams;
+    private readonly IReadOnlySet<string> ownedQueryParams;
 
     /// <summary>
     /// Parses query options from an <see cref="IQueryCollection"/>.
-    /// Query keys are matched case-insensitively. Unrecognised keys are silently ignored.
+    /// Query keys are looked up with the collection's own key comparison, which is
+    /// case-insensitive for <see cref="HttpRequest.Query"/>. Unrecognised keys are silently ignored.
     /// Disabled options whose keys are present are silently skipped (no exception at parse time).
     /// </summary>
     public ApiQueryOptions(IQueryCollection? query, ApiQueryOptionsSettings? settings = null)
@@ -28,46 +31,8 @@ public sealed class ApiQueryOptions<T>
     private ApiQueryOptions(IQueryCollection? query, ApiQueryOptionsSettings? settings, HttpRequest? request)
     {
         Settings = settings ?? new ApiQueryOptionsSettings();
-
-        if (Settings.SkipTokenParameterNames == null || Settings.SkipTokenParameterNames.Count == 0)
-        {
-            throw new ArgumentException("SkipTokenParameterNames cannot be null or empty.", nameof(settings));
-        }
-
-        if (Settings.ExpandParameterNames == null || Settings.ExpandParameterNames.Count == 0)
-        {
-            throw new ArgumentException("ExpandParameterNames cannot be null or empty.", nameof(settings));
-        }
-
-        if (Settings.FilterParameterNames == null || Settings.FilterParameterNames.Count == 0)
-        {
-            throw new ArgumentException("FilterParameterNames cannot be null or empty.", nameof(settings));
-        }
-
-        if (Settings.OrderByParameterNames == null || Settings.OrderByParameterNames.Count == 0)
-        {
-            throw new ArgumentException("OrderByParameterNames cannot be null or empty.", nameof(settings));
-        }
-
-        if (Settings.TopParameterNames == null || Settings.TopParameterNames.Count == 0)
-        {
-            throw new ArgumentException("TopParameterNames cannot be null or empty.", nameof(settings));
-        }
-
-        if (Settings.SkipParameterNames == null || Settings.SkipParameterNames.Count == 0)
-        {
-            throw new ArgumentException("SkipParameterNames cannot be null or empty.", nameof(settings));
-        }
-
-        this.httpRequest = request;
-
-        ownedQueryParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (string name in Settings.ExpandParameterNames) ownedQueryParams.Add(name);
-        foreach (string name in Settings.FilterParameterNames) ownedQueryParams.Add(name);
-        foreach (string name in Settings.OrderByParameterNames) ownedQueryParams.Add(name);
-        foreach (string name in Settings.SkipParameterNames) ownedQueryParams.Add(name);
-        foreach (string name in Settings.SkipTokenParameterNames) ownedQueryParams.Add(name);
-        foreach (string name in Settings.TopParameterNames) ownedQueryParams.Add(name);
+        ownedQueryParams = Settings.GetOwnedParameterNames(nameof(settings));
+        httpRequest = request;
 
         if (query is null)
         {
@@ -318,28 +283,23 @@ public sealed class ApiQueryOptions<T>
     private static string? GetFirstValue(IQueryCollection query, IReadOnlyList<string> names) =>
         names.Select(name => GetValue(query, name)).FirstOrDefault(value => value is not null);
 
-    private static string? GetValue(IQueryCollection query, string key)
-    {
-        foreach (string k in query.Keys)
-        {
-            if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
-            {
-                StringValues val = query[k];
-                return val.Count > 0 ? (string?)val[0] : null;
-            }
-        }
-        return null;
-    }
+    private static string? GetValue(IQueryCollection query, string key) =>
+        query.TryGetValue(key, out StringValues values) && values.Count > 0 ? values[0] : null;
 
     private static bool IsNamed(string key, IReadOnlyList<string> names) =>
         names.Any(name => string.Equals(name, key, StringComparison.OrdinalIgnoreCase));
 
+    private static void AppendQueryParameter(StringBuilder query, string name, string? value)
+    {
+        query.Append(query.Length == 0 ? '?' : '&');
+        query.Append(QueryStringEncoder.EncodeName(name));
+        query.Append('=');
+        query.Append(Uri.EscapeDataString(value ?? string.Empty));
+    }
+
     private string BuildNextLinkUrl(HttpRequest request, int nextSkip)
     {
-        // We use Flurl here for convenient URL manipulation (Flurl rocks)
-        Flurl.Url url = new($"{request.Scheme}://{request.Host}");
-        url.AppendPathSegment(request.PathBase);
-        url.AppendPathSegment(request.Path);
+        var query = new StringBuilder();
 
         foreach (KeyValuePair<string, StringValues> kvp in request.Query)
         {
@@ -354,21 +314,26 @@ public sealed class ApiQueryOptions<T>
                 // including any unrecognized or custom ones. These are
                 // forwarded verbatim since we cannot know whether they
                 // are relevant endpoint handling the next page or not.
-                url.AppendQueryParam(kvp.Key, value ?? string.Empty);
+                AppendQueryParameter(query, kvp.Key, value);
             }
         }
 
         if (Settings.SkipTokenEnabled)
         {
-            url.AppendQueryParam(Settings.SkipTokenParameterNames[0], SkipTokenEncoder.Encode(this, nextSkip));
+            AppendQueryParameter(query, Settings.SkipTokenParameterNames[0], SkipTokenEncoder.Encode(this, nextSkip));
         }
         else
         {
-            url.AppendQueryParam(Settings.TopParameterNames[0], Top!.Value.ToString(CultureInfo.InvariantCulture));
-            url.AppendQueryParam(Settings.SkipParameterNames[0], nextSkip.ToString(CultureInfo.InvariantCulture));
+            AppendQueryParameter(query, Settings.TopParameterNames[0], Top!.Value.ToString(CultureInfo.InvariantCulture));
+            AppendQueryParameter(query, Settings.SkipParameterNames[0], nextSkip.ToString(CultureInfo.InvariantCulture));
         }
 
-        return url.ToString();
+        return UriHelper.BuildAbsolute(
+            request.Scheme,
+            request.Host,
+            request.PathBase,
+            request.Path,
+            new QueryString(query.ToString()));
     }
 
     private bool IsReplacedInNextLink(string key)

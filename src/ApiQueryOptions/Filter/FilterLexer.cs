@@ -143,7 +143,7 @@ internal sealed class FilterLexer
                 }
                 else
                 {
-                    break;
+                    return new Token(TokenKind.StringLiteral, sb.ToString(), start);
                 }
             }
             else
@@ -152,7 +152,9 @@ internal sealed class FilterLexer
                 _pos++;
             }
         }
-        return new Token(TokenKind.StringLiteral, sb.ToString(), start);
+
+        throw new Exceptions.FilterParseException(
+            $"Unterminated string literal starting at position {start}.", _input, start);
     }
 
     private void SkipWhitespace()

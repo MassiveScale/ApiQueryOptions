@@ -252,4 +252,82 @@ public class FilterParserTests
         act.Should().Throw<FilterParseException>();
         act.Should().Throw<FilterParseException>(); // idempotent
     }
+
+    [TestMethod]
+    public void Parse_UnknownOperator_ThrowsWithPosition()
+    {
+        Action act = () => Parser().Parse("Name like 'a'");
+
+        act.Should().Throw<FilterParseException>().Which.Position.Should().Be(5);
+    }
+
+    [TestMethod]
+    [DataRow("'a' eq Name")]
+    [DataRow(")")]
+    public void Parse_UnexpectedLeadingToken_Throws(string filter)
+    {
+        Action act = () => Parser().Parse(filter);
+
+        act.Should().Throw<FilterParseException>().WithMessage("Unexpected token*");
+    }
+
+    [TestMethod]
+    [DataRow("Name 'a'", "Expected operator (eq, ne, lt, gt, le, ge) but found 'a' at position 5.")]
+    [DataRow("startswith(Name, 5)", "Expected string literal but found '5' at position 17.")]
+    public void Parse_WrongTokenKind_Throws(string filter, string message)
+    {
+        Action act = () => Parser().Parse(filter);
+
+        act.Should().Throw<FilterParseException>().WithMessage(message);
+    }
+
+    [TestMethod]
+    public void Parse_Null_ThrowsWithEmptyRawFilter()
+    {
+        Action act = () => Parser().Parse(null!);
+
+        act.Should().Throw<FilterParseException>().Which.RawFilter.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void Parse_DecimalBeyondRange_Throws()
+    {
+        Action act = () => Parser().Parse("Price eq 999999999999999999999999999999.5");
+
+        act.Should().Throw<FilterParseException>().WithMessage("Decimal value '*' is out of range at position 9.");
+    }
+
+    [TestMethod]
+    public void Parse_ValueMissing_Throws()
+    {
+        Action act = () => Parser().Parse("Name eq (");
+
+        act.Should().Throw<FilterParseException>().WithMessage("Unexpected token '(' at position 8. Expected a value*");
+    }
+
+    [TestMethod]
+    public void Parse_NegativeInteger_UsesInvariantSign()
+    {
+        var node = (BinaryFilterNode)Parser().Parse("Age eq -5").Expression;
+
+        node.Value.Should().Be(-5);
+    }
+
+    [TestMethod]
+    public void FilterParseException_WithInner_KeepsDetails()
+    {
+        var inner = new FormatException("inner");
+
+        var ex = new FilterParseException("message", "raw", 3, inner);
+
+        ex.RawFilter.Should().Be("raw");
+        ex.Position.Should().Be(3);
+        ex.InnerException.Should().BeSameAs(inner);
+    }
+
+    [TestMethod]
+    public void Token_ToString_DescribesToken()
+    {
+        new Token(TokenKind.Comma, ",", 3).ToString().Should().Be("[Comma ',' @3]");
+    }
 }

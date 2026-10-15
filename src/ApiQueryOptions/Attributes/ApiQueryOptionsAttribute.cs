@@ -5,12 +5,15 @@ namespace ApiQueryOptions;
 /// Values set here take precedence over those registered at startup via
 /// <c>AddApiQueryOptions()</c>. When applied to both a controller and one of its methods,
 /// the method-level attribute wins.
-/// Unset properties (integer <c>0</c> or <see cref="QueryOptionState.Default"/>) are not
-/// overridden; the registered setting is used unchanged.
+/// Unset properties (integer <c>0</c>, <c>null</c>, <see cref="QueryOptionState.Default"/>, or a
+/// <see cref="StringMatching"/> that is never assigned) are not overridden; the registered
+/// setting is used unchanged.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
 public sealed class ApiQueryOptionsAttribute : Attribute
 {
+    private StringMatching? stringMatching;
+
     /// <summary>
     /// Overrides <see cref="ApiQueryOptionsSettings.DefaultPageSize"/>.
     /// <c>0</c> (the default) leaves the registered value unchanged.
@@ -54,6 +57,22 @@ public sealed class ApiQueryOptionsAttribute : Attribute
     public QueryOptionState SkipTokenEnabled { get; set; }
 
     /// <summary>
+    /// Overrides <see cref="ApiQueryOptionsSettings.StringMatching"/>.
+    /// When this property is not set, the registered value is used unchanged.
+    /// </summary>
+    public StringMatching StringMatching
+    {
+        get => stringMatching ?? StringMatching.IgnoreCase;
+        set => stringMatching = value;
+    }
+
+    /// <summary>
+    /// Overrides <see cref="ApiQueryOptionsSettings.TieBreakerProperty"/>.
+    /// <c>null</c> (the default) leaves the registered value unchanged.
+    /// </summary>
+    public string? TieBreakerProperty { get; set; }
+
+    /// <summary>
     /// Overrides <see cref="ApiQueryOptionsSettings.TopEnabled"/>.
     /// <see cref="QueryOptionState.Default"/> leaves the registered value unchanged.
     /// </summary>
@@ -86,7 +105,8 @@ public sealed class ApiQueryOptionsAttribute : Attribute
             SkipParameterNames = settings.SkipParameterNames,
             SkipTokenEnabled = Resolve(SkipTokenEnabled, settings.SkipTokenEnabled),
             SkipTokenParameterNames = settings.SkipTokenParameterNames,
-            StringComparison = settings.StringComparison,
+            StringMatching = stringMatching ?? settings.StringMatching,
+            TieBreakerProperty = TieBreakerProperty ?? settings.TieBreakerProperty,
             TopEnabled = Resolve(TopEnabled, settings.TopEnabled),
             TopParameterNames = settings.TopParameterNames,
         };

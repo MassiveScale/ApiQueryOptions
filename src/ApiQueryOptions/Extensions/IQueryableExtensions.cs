@@ -13,17 +13,75 @@ namespace ApiQueryOptions.Extensions;
 /// </summary>
 public static class IQueryableExtensions
 {
+    private const string FilterOptionName = "filter";
+    private const string OrderByOptionName = "orderby";
+
+    private static readonly MethodInfo _compareMethod =
+        typeof(string).GetMethod(nameof(string.Compare), [typeof(string), typeof(string)])!;
+    private static readonly MethodInfo _compareOrdinalMethod =
+        typeof(string).GetMethod(nameof(string.CompareOrdinal), [typeof(string), typeof(string)])!;
+    private static readonly MethodInfo _compareWithComparisonMethod =
+        typeof(string).GetMethod(nameof(string.Compare), [typeof(string), typeof(string), typeof(StringComparison)])!;
+    private static readonly MethodInfo _containsMethod =
+        typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!;
+    private static readonly MethodInfo _containsWithComparisonMethod =
+        typeof(string).GetMethod(nameof(string.Contains), [typeof(string), typeof(StringComparison)])!;
     private static readonly MethodInfo _createValueAccessMethod =
         typeof(IQueryableExtensions).GetMethod(nameof(CreateValueAccess), BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly MethodInfo _endsWithMethod =
+        typeof(string).GetMethod(nameof(string.EndsWith), [typeof(string)])!;
+    private static readonly MethodInfo _endsWithWithComparisonMethod =
+        typeof(string).GetMethod(nameof(string.EndsWith), [typeof(string), typeof(StringComparison)])!;
+    private static readonly MethodInfo _equalsWithComparisonMethod =
+        typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(string), typeof(StringComparison)])!;
+    private static readonly MethodInfo _startsWithMethod =
+        typeof(string).GetMethod(nameof(string.StartsWith), [typeof(string)])!;
+    private static readonly MethodInfo _startsWithWithComparisonMethod =
+        typeof(string).GetMethod(nameof(string.StartsWith), [typeof(string), typeof(StringComparison)])!;
+    private static readonly MethodInfo _toUpperMethod =
+        typeof(string).GetMethod(nameof(string.ToUpper), Type.EmptyTypes)!;
     private static readonly ConcurrentDictionary<Type, Func<object, Expression>> _valueAccessFactories = new();
+
+    /// <summary>
+    /// How string comparisons are built for one query.
+    /// </summary>
+    private enum StringMode
+    {
+        /// <summary>
+        /// <see cref="StringComparison.OrdinalIgnoreCase"/> overloads, for in-memory sources.
+        /// </summary>
+        OrdinalIgnoreCase,
+
+        /// <summary>
+        /// <see cref="StringComparison.Ordinal"/> overloads, for in-memory sources.
+        /// </summary>
+        Ordinal,
+
+        /// <summary>
+        /// <c>UPPER(column)</c> compared with a value upper-cased on the client, for database providers.
+        /// </summary>
+        Upper,
+
+        /// <summary>
+        /// Plain operators and methods with nothing added.
+        /// </summary>
+        Plain,
+    }
 
     /// <summary>
     /// Applies all non-null options from <paramref name="options"/> to <paramref name="query"/>
     /// in the order: Filter → OrderBy → Skip → Top → Expand.
+    /// When <see cref="ApiQueryOptionsSettings.TieBreakerProperty"/> is set and <c>$top</c> or
+    /// <c>$skip</c> is applied, the tie-breaker is appended as the last sort column unless
+    /// <c>$orderby</c> already includes it.
     /// <c>Expand</c> is applied as EF Core <c>.Include()</c> calls when the
     /// <c>ApiQueryOptions.EntityFrameworkCore</c> package is installed; no <c>using</c> for that
     /// package is needed. Without it, or for value-type entities, <c>Expand</c> is ignored.
     /// </summary>
+    /// <exception cref="InvalidQueryOptionException">
+    /// When an option names an unknown property or cannot be applied to <typeparamref name="T"/>,
+    /// or when <see cref="ApiQueryOptionsSettings.TieBreakerProperty"/> names an unknown property.
+    /// </exception>
     public static IQueryable<T> Apply<T>(this IQueryable<T> query, ApiQueryOptions<T> options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -36,6 +94,11 @@ public static class IQueryableExtensions
         if (options.OrderBy is not null)
         {
             query = query.ApplyOrderBy(options.OrderBy, options.Settings);
+        }
+
+        if (options.Skip is not null || options.Top is not null)
+        {
+            query = ApplyTieBreaker(query, options.OrderBy, options.Settings.TieBreakerProperty);
         }
 
         if (options.Skip is not null)
@@ -57,9 +120,16 @@ public static class IQueryableExtensions
     }
 
     /// <summary>
-    /// Applies a <c>$filter</c> expression as a deferred <c>.Where()</c> call.
+    /// Applies a <c>$filter</c> expression as a deferred <c>.Where()</c> call. String comparisons
+    /// follow <see cref="ApiQueryOptionsSettings.StringMatching"/>.
     /// </summary>
     /// <exception cref="QueryOptionDisabledException">When <c>settings.FilterEnabled</c> is <c>false</c>.</exception>
+    /// <exception cref="FilterParseException">When the filter expression cannot be parsed.</exception>
+    /// <exception cref="InvalidQueryOptionException">
+    /// When the filter names an unknown property, uses a value that cannot be converted to the
+    /// property's type, uses a string function on a non-string property, compares a non-nullable
+    /// value type with <c>null</c>, or uses an operator the property's type does not support.
+    /// </exception>
     public static IQueryable<T> ApplyFilter<T>(
         this IQueryable<T> query,
         FilterQueryOption filter,
@@ -70,8 +140,9 @@ public static class IQueryableExtensions
             throw new QueryOptionDisabledException("filter");
         }
 
+        StringMode mode = GetStringMode(settings.StringMatching, inMemory: query.Provider is EnumerableQuery);
         ParameterExpression param = Expression.Parameter(typeof(T), "x");
-        Expression body = BuildFilterExpression(filter.FilterClause.Expression, param, settings);
+        Expression body = BuildFilterExpression(filter.FilterClause.Expression, param, mode);
         var lambda = Expression.Lambda<Func<T, bool>>(body, param);
         return query.Where(lambda);
     }
@@ -80,6 +151,7 @@ public static class IQueryableExtensions
     /// Applies a <c>$orderby</c> expression as a deferred <c>.OrderBy()</c> chain.
     /// </summary>
     /// <exception cref="QueryOptionDisabledException">When <c>settings.OrderByEnabled</c> is <c>false</c>.</exception>
+    /// <exception cref="InvalidQueryOptionException">When the orderby names an unknown property.</exception>
     public static IQueryable<T> ApplyOrderBy<T>(
         this IQueryable<T> query,
         OrderByQueryOption orderBy,
@@ -90,29 +162,15 @@ public static class IQueryableExtensions
             throw new QueryOptionDisabledException("orderby");
         }
 
-        IOrderedQueryable<T>? ordered = null;
+        IQueryable<T> ordered = query;
+        bool isOrdered = false;
         foreach (OrderByItem item in orderBy.Items)
         {
-            ParameterExpression param = Expression.Parameter(typeof(T), "x");
-            MemberExpression prop = BuildPropertyAccess(param, item.Property);
-            LambdaExpression keySelector = Expression.Lambda(prop, param);
-
-            string method = ordered is null
-                ? (item.Descending ? "OrderByDescending" : "OrderBy")
-                : (item.Descending ? "ThenByDescending" : "ThenBy");
-
-            Type resultType = prop.Type;
-            MethodCallExpression call = Expression.Call(
-                typeof(Queryable),
-                method,
-                [typeof(T), resultType],
-                (ordered is null ? query : ordered).Expression,
-                Expression.Quote(keySelector));
-
-            ordered = (IOrderedQueryable<T>)query.Provider.CreateQuery<T>(call);
+            ordered = OrderByProperty(ordered, item.Property, item.Descending, thenBy: isOrdered);
+            isOrdered = true;
         }
 
-        return ordered ?? query;
+        return ordered;
     }
 
     /// <summary>
@@ -149,33 +207,41 @@ public static class IQueryableExtensions
         return query.Take(top.Value);
     }
 
-    private static Expression BuildBinaryExpression(
-        BinaryFilterNode node,
-        ParameterExpression param,
-        ApiQueryOptionsSettings settings)
+    private static IQueryable<T> ApplyTieBreaker<T>(IQueryable<T> query, OrderByQueryOption? orderBy, string? tieBreaker)
     {
-        MemberExpression propExpr = BuildPropertyAccess(param, node.Property);
-
-        // Convert the constant to the property's type (handles nullable types too)
-        Type targetType = Nullable.GetUnderlyingType(propExpr.Type) ?? propExpr.Type;
-        object? converted = node.Value is null ? null : Convert.ChangeType(node.Value, targetType);
-        Expression constExpr = BuildValueExpression(converted, propExpr.Type);
-
-        // For string eq/ne with OrdinalIgnoreCase, use .ToUpper() for EF Core compatibility
-        if (propExpr.Type == typeof(string) && node.Operator is FilterOperator.Eq or FilterOperator.Ne &&
-            settings.StringComparison == StringComparison.OrdinalIgnoreCase)
+        if (tieBreaker is null)
         {
-            MethodInfo toUpperMethod = typeof(string).GetMethod(nameof(string.ToUpper), [])!;
-            Expression propUpper = Expression.Call(propExpr, toUpperMethod);
-            Expression constUpper = Expression.Call(constExpr, toUpperMethod);
-
-            BinaryExpression equalExpr = Expression.Equal(propUpper, constUpper);
-            return node.Operator == FilterOperator.Ne
-                ? Expression.Not(equalExpr)
-                : (Expression)equalExpr;
+            return query;
         }
 
-        return node.Operator switch
+        bool isOrdered = orderBy is { Items.Count: > 0 };
+        if (isOrdered && orderBy!.Items.Any(item => string.Equals(item.Property, tieBreaker, StringComparison.OrdinalIgnoreCase)))
+        {
+            return query;
+        }
+
+        return OrderByProperty(query, tieBreaker, descending: false, thenBy: isOrdered);
+    }
+
+    private static Expression BuildBinaryExpression(BinaryFilterNode node, ParameterExpression param, StringMode mode)
+    {
+        MemberExpression propExpr = BuildPropertyAccess(param, node.Property, FilterOptionName);
+
+        if (node.Value is null)
+        {
+            return BuildNullComparison(node, propExpr);
+        }
+
+        Type targetType = Nullable.GetUnderlyingType(propExpr.Type) ?? propExpr.Type;
+        object converted = FilterValueConverter.Convert(node.Value, targetType, node.Property);
+
+        if (propExpr.Type == typeof(string))
+        {
+            return BuildStringComparison(node.Operator, propExpr, (string)converted, mode);
+        }
+
+        Expression constExpr = BuildValueExpression(converted, propExpr.Type);
+        return BuildOperator(node, () => node.Operator switch
         {
             FilterOperator.Eq => Expression.Equal(propExpr, constExpr),
             FilterOperator.Ne => Expression.NotEqual(propExpr, constExpr),
@@ -184,60 +250,59 @@ public static class IQueryableExtensions
             FilterOperator.Le => Expression.LessThanOrEqual(propExpr, constExpr),
             FilterOperator.Ge => Expression.GreaterThanOrEqual(propExpr, constExpr),
             _ => throw new NotSupportedException($"Unsupported operator: {node.Operator}") // coverage: exclude
-        };
+        });
     }
 
-    private static Expression BuildFilterExpression(
-            FilterNode node,
-        ParameterExpression param,
-        ApiQueryOptionsSettings settings)
+    private static Expression BuildFilterExpression(FilterNode node, ParameterExpression param, StringMode mode)
     {
         return node switch
         {
-            BinaryFilterNode bin => BuildBinaryExpression(bin, param, settings),
-            LogicalFilterNode logical => BuildLogicalExpression(logical, param, settings),
-            FunctionFilterNode func => BuildFunctionExpression(func, param, settings),
+            BinaryFilterNode bin => BuildBinaryExpression(bin, param, mode),
+            LogicalFilterNode logical => BuildLogicalExpression(logical, param, mode),
+            FunctionFilterNode func => BuildFunctionExpression(func, param, mode),
             _ => throw new NotSupportedException($"Unsupported filter node type: {node.GetType().Name}") // coverage: exclude
         };
     }
 
-    private static Expression BuildFunctionExpression(
-        FunctionFilterNode node,
-        ParameterExpression param,
-        ApiQueryOptionsSettings settings)
+    private static Expression BuildFunctionExpression(FunctionFilterNode node, ParameterExpression param, StringMode mode)
     {
-        MemberExpression propExpr = BuildPropertyAccess(param, node.Property);
-        Expression valueExpr = BuildValueExpression(node.Value, typeof(string));
+        MemberExpression propExpr = BuildPropertyAccess(param, node.Property, FilterOptionName);
 
-        string methodName = node.Function switch
+        if (propExpr.Type != typeof(string))
         {
-            StringFunction.StartsWith => nameof(string.StartsWith),
-            StringFunction.EndsWith => nameof(string.EndsWith),
-            StringFunction.Contains => nameof(string.Contains),
+            throw new InvalidQueryOptionException(
+                FilterOptionName,
+                node.Property,
+                $"The '{node.Function}' function requires a string property, but '{node.Property}' is of type '{propExpr.Type.Name}'.");
+        }
+
+        (MethodInfo plain, MethodInfo withComparison) = node.Function switch
+        {
+            StringFunction.StartsWith => (_startsWithMethod, _startsWithWithComparisonMethod),
+            StringFunction.EndsWith => (_endsWithMethod, _endsWithWithComparisonMethod),
+            StringFunction.Contains => (_containsMethod, _containsWithComparisonMethod),
             _ => throw new NotSupportedException($"Unsupported string function: {node.Function}") // coverage: exclude
         };
 
-        // For OrdinalIgnoreCase, use .ToUpper() on both sides for EF Core compatibility
-        if (settings.StringComparison == StringComparison.OrdinalIgnoreCase)
+        Expression call = mode switch
         {
-            MethodInfo toUpperMethod = typeof(string).GetMethod(nameof(string.ToUpper), [])!;
-            Expression propUpper = Expression.Call(propExpr, toUpperMethod);
-            Expression valueUpper = Expression.Call(valueExpr, toUpperMethod);
-            MethodInfo method = typeof(string).GetMethod(methodName, [typeof(string)])!;
-            return Expression.Call(propUpper, method, valueUpper);
-        }
+            StringMode.OrdinalIgnoreCase => Expression.Call(
+                propExpr, withComparison, BuildValueExpression(node.Value, typeof(string)), Expression.Constant(StringComparison.OrdinalIgnoreCase)),
+            StringMode.Ordinal => Expression.Call(
+                propExpr, withComparison, BuildValueExpression(node.Value, typeof(string)), Expression.Constant(StringComparison.Ordinal)),
+            StringMode.Upper => Expression.Call(
+                Expression.Call(propExpr, _toUpperMethod), plain, BuildValueExpression(node.Value.ToUpperInvariant(), typeof(string))),
+            _ => Expression.Call(propExpr, plain, BuildValueExpression(node.Value, typeof(string))),
+        };
 
-        MethodInfo caseSensitiveMethod = typeof(string).GetMethod(methodName, [typeof(string)])!;
-        return Expression.Call(propExpr, caseSensitiveMethod, valueExpr);
+        // A null property never matches a string function, in memory or in the database.
+        return NotNullAnd(propExpr, call);
     }
 
-    private static Expression BuildLogicalExpression(
-            LogicalFilterNode node,
-        ParameterExpression param,
-        ApiQueryOptionsSettings settings)
+    private static Expression BuildLogicalExpression(LogicalFilterNode node, ParameterExpression param, StringMode mode)
     {
-        Expression left = BuildFilterExpression(node.Left, param, settings);
-        Expression right = BuildFilterExpression(node.Right, param, settings);
+        Expression left = BuildFilterExpression(node.Left, param, mode);
+        Expression right = BuildFilterExpression(node.Right, param, mode);
 
         return node.Operator switch
         {
@@ -247,19 +312,119 @@ public static class IQueryableExtensions
         };
     }
 
+    private static Expression BuildNullComparison(BinaryFilterNode node, MemberExpression propExpr)
+    {
+        if (propExpr.Type.IsValueType && Nullable.GetUnderlyingType(propExpr.Type) is null)
+        {
+            throw new InvalidQueryOptionException(
+                FilterOptionName,
+                node.Property,
+                $"Property '{node.Property}' of type '{propExpr.Type.Name}' cannot be compared with null.");
+        }
+
+        Expression nullExpr = Expression.Constant(null, propExpr.Type);
+        return node.Operator switch
+        {
+            FilterOperator.Eq => Expression.Equal(propExpr, nullExpr),
+            FilterOperator.Ne => Expression.NotEqual(propExpr, nullExpr),
+            _ => throw new InvalidQueryOptionException(
+                FilterOptionName,
+                node.Property,
+                $"The '{node.Operator}' operator cannot be used with null for property '{node.Property}'."),
+        };
+    }
+
+    /// <summary>
+    /// Builds a comparison operator, turning the <see cref="InvalidOperationException"/> that
+    /// <see cref="Expression"/> throws for an operator the type does not define into an
+    /// <see cref="InvalidQueryOptionException"/>.
+    /// </summary>
+    private static Expression BuildOperator(BinaryFilterNode node, Func<Expression> build)
+    {
+        try
+        {
+            return build();
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidQueryOptionException(
+                FilterOptionName,
+                node.Property,
+                $"The '{node.Operator}' operator is not supported for property '{node.Property}'.",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Builds a property access expression supporting dot-notation for nested properties.
+    /// </summary>
+    private static MemberExpression BuildPropertyAccess(Expression root, string propertyPath, string optionName)
+    {
+        Expression current = root;
+
+        foreach (string part in propertyPath.Split('.'))
+        {
+            PropertyInfo prop = PropertyCache.Find(current.Type, part)
+                ?? throw new InvalidQueryOptionException(
+                    optionName,
+                    propertyPath,
+                    $"Property '{part}' not found on type '{current.Type.Name}'.");
+
+            current = Expression.Property(current, prop);
+        }
+
+        return (MemberExpression)current;
+    }
+
+    private static Expression BuildStringComparison(FilterOperator op, MemberExpression propExpr, string value, StringMode mode)
+    {
+        Expression valueExpr = BuildValueExpression(mode == StringMode.Upper ? value.ToUpperInvariant() : value, typeof(string));
+        Expression left = mode == StringMode.Upper ? Expression.Call(propExpr, _toUpperMethod) : propExpr;
+
+        if (op is FilterOperator.Eq or FilterOperator.Ne)
+        {
+            Expression equal = mode switch
+            {
+                StringMode.OrdinalIgnoreCase => Expression.Call(
+                    _equalsWithComparisonMethod, propExpr, valueExpr, Expression.Constant(StringComparison.OrdinalIgnoreCase)),
+                StringMode.Upper => NotNullAnd(propExpr, Expression.Equal(left, valueExpr)),
+                _ => Expression.Equal(propExpr, valueExpr),
+            };
+
+            return op == FilterOperator.Eq ? equal : Expression.Not(equal);
+        }
+
+        // EF Core translates 'string.Compare(a, b) op 0' into 'a op b'.
+        Expression compare = mode switch
+        {
+            StringMode.OrdinalIgnoreCase => Expression.Call(
+                _compareWithComparisonMethod, propExpr, valueExpr, Expression.Constant(StringComparison.OrdinalIgnoreCase)),
+            StringMode.Ordinal => Expression.Call(_compareOrdinalMethod, propExpr, valueExpr),
+            _ => Expression.Call(_compareMethod, left, valueExpr),
+        };
+
+        Expression zero = Expression.Constant(0);
+        Expression result = op switch
+        {
+            FilterOperator.Lt => Expression.LessThan(compare, zero),
+            FilterOperator.Gt => Expression.GreaterThan(compare, zero),
+            FilterOperator.Le => Expression.LessThanOrEqual(compare, zero),
+            FilterOperator.Ge => Expression.GreaterThanOrEqual(compare, zero),
+            _ => throw new NotSupportedException($"Unsupported operator: {op}") // coverage: exclude
+        };
+
+        // In memory, string.Compare sorts null first; excluding it matches nullable value types and SQL.
+        return NotNullAnd(propExpr, result);
+    }
+
     /// <summary>
     /// Builds the expression for a filter value. Non-null values are read through a property of a
     /// captured holder object rather than embedded as a constant, so EF Core sends them as SQL
     /// parameters. Inlined literals would give every distinct value its own EF query-cache entry
     /// and its own database execution plan.
     /// </summary>
-    private static Expression BuildValueExpression(object? value, Type type)
+    private static Expression BuildValueExpression(object value, Type type)
     {
-        if (value is null)
-        {
-            return Expression.Constant(null, type);
-        }
-
         Func<object, Expression> factory = _valueAccessFactories.GetOrAdd(type, static t =>
             _createValueAccessMethod.MakeGenericMethod(t).CreateDelegate<Func<object, Expression>>());
         return factory(value);
@@ -270,27 +435,41 @@ public static class IQueryableExtensions
             Expression.Constant(new FilterValue<TValue>((TValue)value)),
             nameof(FilterValue<TValue>.Value));
 
-    /// <summary>
-    /// Builds a property access expression supporting dot-notation for nested properties.
-    /// </summary>
-    private static MemberExpression BuildPropertyAccess(Expression root, string propertyPath)
+    private static StringMode GetStringMode(StringMatching matching, bool inMemory)
     {
-        string[] parts = propertyPath.Split('.');
-        Expression current = root;
-        MemberExpression? memberExpr = null;
-
-        foreach (string part in parts)
+        return matching switch
         {
-            PropertyInfo prop = current.Type.GetProperty(part,
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
-                ?? throw new InvalidOperationException(
-                    $"Property '{part}' not found on type '{current.Type.Name}'.");
+            StringMatching.IgnoreCase => inMemory ? StringMode.OrdinalIgnoreCase : StringMode.Upper,
+            StringMatching.CaseSensitive => inMemory ? StringMode.Ordinal : StringMode.Plain,
+            _ => StringMode.Plain,
+        };
+    }
 
-            memberExpr = Expression.Property(current, prop);
-            current = memberExpr;
-        }
+    /// <summary>
+    /// Returns <c>property != null &amp;&amp; <paramref name="expression"/></c>, so in-memory
+    /// sources never call a method on a null string.
+    /// </summary>
+    private static Expression NotNullAnd(MemberExpression property, Expression expression) =>
+        Expression.AndAlso(Expression.NotEqual(property, Expression.Constant(null, typeof(string))), expression);
 
-        return memberExpr!;
+    private static IQueryable<T> OrderByProperty<T>(IQueryable<T> query, string propertyPath, bool descending, bool thenBy)
+    {
+        ParameterExpression param = Expression.Parameter(typeof(T), "x");
+        MemberExpression prop = BuildPropertyAccess(param, propertyPath, OrderByOptionName);
+        LambdaExpression keySelector = Expression.Lambda(prop, param);
+
+        string method = thenBy
+            ? (descending ? nameof(Queryable.ThenByDescending) : nameof(Queryable.ThenBy))
+            : (descending ? nameof(Queryable.OrderByDescending) : nameof(Queryable.OrderBy));
+
+        MethodCallExpression call = Expression.Call(
+            typeof(Queryable),
+            method,
+            [typeof(T), prop.Type],
+            query.Expression,
+            Expression.Quote(keySelector));
+
+        return query.Provider.CreateQuery<T>(call);
     }
 
     /// <summary>

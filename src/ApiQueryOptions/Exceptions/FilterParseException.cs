@@ -3,7 +3,7 @@ namespace ApiQueryOptions.Exceptions;
 /// <summary>
 /// Thrown when a filter expression string cannot be parsed.
 /// </summary>
-public sealed class FilterParseException : Exception
+public sealed class FilterParseException : ApiQueryOptionsException
 {
     /// <summary>
     /// Initializes a new instance with the parse failure details.

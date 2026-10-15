@@ -104,6 +104,26 @@ This generates:
 .Include(o => o.Lines).ThenInclude(l => l.Product)
 ```
 
+Each segment is checked against the entity's public properties before `.Include()` is called, and names are matched in any case (`$expand=customer` works). A segment after a collection, such as `Product` in `Lines.Product`, is looked up on the collection's element type. An unknown segment throws `InvalidQueryOptionException` (a subclass of `ApiQueryOptionsException`), so a bad `$expand` can be returned as `400 Bad Request` like any other client error.
+
+---
+
+## Case-insensitive filters and indexes
+
+The default `StringMatching.IgnoreCase` compares `UPPER(column)` with an upper-cased parameter. That works on every database, but it prevents the database from using an index on the column. When a filtered string column is large or hot, give it a case-insensitive collation and switch to `StringMatching.Database`, which sends a plain `=` or `LIKE` that can use the index:
+
+```csharp
+// Model configuration (SQL Server example)
+modelBuilder.Entity<Customer>()
+    .Property(c => c.Name)
+    .UseCollation("SQL_Latin1_General_CP1_CI_AS");
+
+// Program.cs
+builder.Services.AddApiQueryOptions(o => o.StringMatching = StringMatching.Database);
+```
+
+`[ApiQueryOptions(StringMatching = StringMatching.Database)]` applies the same setting to a single controller or action.
+
 ---
 
 ## Supported frameworks

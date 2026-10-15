@@ -21,7 +21,8 @@ public class QueryOptionTests
         s.OrderByEnabled.Should().BeTrue();
         s.SkipEnabled.Should().BeTrue();
         s.SkipTokenEnabled.Should().BeTrue();
-        s.StringComparison.Should().Be(StringComparison.OrdinalIgnoreCase);
+        s.StringMatching.Should().Be(StringMatching.IgnoreCase);
+        s.TieBreakerProperty.Should().BeNull();
         s.TopEnabled.Should().BeTrue();
     }
 
@@ -468,12 +469,12 @@ public class QueryOptionTests
     }
 
     [TestMethod]
-    public void ApiQueryOptionsAttribute_ApplyTo_StringComparison_AlwaysPreservedFromSettings()
+    public void ApiQueryOptionsAttribute_ApplyTo_StringMatchingNotSet_PreservedFromSettings()
     {
-        var settings = new ApiQueryOptionsSettings { StringComparison = StringComparison.Ordinal };
+        var settings = new ApiQueryOptionsSettings { StringMatching = StringMatching.Database };
         ApiQueryOptionsSettings result = new ApiQueryOptionsAttribute { MaxPageSize = 10 }.ApplyTo(settings);
 
-        result.StringComparison.Should().Be(StringComparison.Ordinal);
+        result.StringMatching.Should().Be(StringMatching.Database);
     }
 
     [TestMethod]

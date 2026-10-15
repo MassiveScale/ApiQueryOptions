@@ -668,6 +668,69 @@ public class SkipTokenTests
     }
 }
 
+[TestClass]
+public class RequestFactoryTests
+{
+    [TestMethod]
+    public void FromRequest_NullContext_ReturnsEmptyOptions()
+    {
+        var options = ApiQueryOptions<RoundTripEntity>.FromRequest((HttpContext?)null);
+
+        options.Top.Should().BeNull();
+        options.NextLink(resultCount: 10).Should().BeNull();
+    }
+
+    [TestMethod]
+    public void FromRequest_Context_ParsesQueryAndKeepsRequest()
+    {
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Scheme = "https";
+        ctx.Request.Host = new HostString("example.com");
+        ctx.Request.QueryString = new QueryString("?$top=1");
+
+        var options = ApiQueryOptions<RoundTripEntity>.FromRequest((HttpContext?)ctx);
+
+        options.Top!.Value.Should().Be(1);
+        options.NextLink(resultCount: 1).Should().StartWith("https://example.com/?$skiptoken=");
+    }
+
+    [TestMethod]
+    public void FromRequest_AccessorWithoutContext_ReturnsEmptyOptions()
+    {
+        IHttpContextAccessor accessor = Substitute.For<IHttpContextAccessor>();
+        accessor.HttpContext.Returns((HttpContext?)null);
+
+        ApiQueryOptions<RoundTripEntity>.FromRequest(accessor).Filter.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void NextLink_NullQueryValue_ForwardedAsEmpty()
+    {
+        HttpRequest request = Substitute.For<HttpRequest>();
+        request.Scheme.Returns("https");
+        request.Host.Returns(new HostString("example.com"));
+        request.Path.Returns(new PathString("/items"));
+        request.Query.Returns(new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["x"] = new StringValues(new string?[] { null }),
+        }));
+        var options = new ApiQueryOptions<RoundTripEntity>(
+            new QueryCollection(new Dictionary<string, StringValues> { ["$top"] = "2" }));
+
+        options.NextLink(request, resultCount: 2).Should().StartWith("https://example.com/items?x=&$skiptoken=");
+    }
+
+    [TestMethod]
+    public void Decode_NullJsonPayload_ThrowsFormatException()
+    {
+        string token = Convert.ToBase64String("null"u8.ToArray()).TrimEnd('=');
+
+        Action act = () => SkipTokenEncoder.Decode<RoundTripEntity>(token);
+
+        act.Should().Throw<FormatException>().WithMessage("The skip token decoded to a null payload.");
+    }
+}
+
 internal sealed class RoundTripEntity
 {
     public int Age { get; set; }
