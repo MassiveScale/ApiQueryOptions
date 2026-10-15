@@ -44,20 +44,20 @@ public class FilterQueryOptionConcurrencyTests
         {
             var option = new FilterQueryOption("Name eq");
 
-            Exception?[] errors = ReadConcurrently<Exception?>(() =>
+            FilterParseException?[] errors = ReadConcurrently<FilterParseException?>(() =>
             {
                 try
                 {
                     _ = option.FilterClause;
                     return null;
                 }
-                catch (Exception ex)
+                catch (FilterParseException ex)
                 {
                     return ex;
                 }
             });
 
-            errors.Should().AllSatisfy(e => e.Should().BeOfType<FilterParseException>());
+            errors.Should().AllSatisfy(e => e.Should().NotBeNull());
         }
     }
 

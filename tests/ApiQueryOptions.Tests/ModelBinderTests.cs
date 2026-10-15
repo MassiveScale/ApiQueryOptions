@@ -408,6 +408,16 @@ public class ModelBinderTests
     }
 
     [TestMethod]
+    public void ModelBinder_Ctor_ConstructedButOpenType_ThrowsArgumentException()
+    {
+        Type openArgument = typeof(ApiQueryOptions<>).MakeGenericType(typeof(List<>));
+
+        Action act = () => _ = new ApiQueryOptionsModelBinder(openArgument, new ApiQueryOptionsSettings());
+
+        act.Should().Throw<ArgumentException>().WithParameterName("optionsType");
+    }
+
+    [TestMethod]
     public void ModelBinder_Ctor_NullArguments_ThrowArgumentNull()
     {
         Action nullType = () => _ = new ApiQueryOptionsModelBinder(null!, new ApiQueryOptionsSettings());

@@ -43,7 +43,11 @@ public sealed class ApiQueryOptionsModelBinder : IModelBinder
         ArgumentNullException.ThrowIfNull(optionsType);
         ArgumentNullException.ThrowIfNull(settings);
 
-        if (!optionsType.IsConstructedGenericType || optionsType.GetGenericTypeDefinition() != typeof(ApiQueryOptions<>))
+        // ContainsGenericParameters catches types such as ApiQueryOptions<List<>>, which are
+        // constructed but still open and cannot be instantiated.
+        if (!optionsType.IsConstructedGenericType
+            || optionsType.ContainsGenericParameters
+            || optionsType.GetGenericTypeDefinition() != typeof(ApiQueryOptions<>))
         {
             throw new ArgumentException(
                 $"Type '{optionsType}' is not a closed {typeof(ApiQueryOptions<>).Name} type.", nameof(optionsType));
