@@ -27,7 +27,8 @@ public class SettingsCopyTests
         SkipParameterNames = ["offset"],
         SkipTokenEnabled = false,
         SkipTokenParameterNames = ["cursor"],
-        StringComparison = StringComparison.Ordinal,
+        StringMatching = StringMatching.Database,
+        TieBreakerProperty = "Id",
         TopEnabled = false,
         TopParameterNames = ["limit"],
     };
@@ -119,7 +120,8 @@ public class SettingsCopyTests
             o.SkipParameterNames = expected.SkipParameterNames;
             o.SkipTokenEnabled = expected.SkipTokenEnabled;
             o.SkipTokenParameterNames = expected.SkipTokenParameterNames;
-            o.StringComparison = expected.StringComparison;
+            o.StringMatching = expected.StringMatching;
+            o.TieBreakerProperty = expected.TieBreakerProperty;
             o.TopEnabled = expected.TopEnabled;
             o.TopParameterNames = expected.TopParameterNames;
         });

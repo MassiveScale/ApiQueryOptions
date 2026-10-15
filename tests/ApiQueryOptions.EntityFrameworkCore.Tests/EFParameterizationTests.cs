@@ -73,12 +73,9 @@ public sealed class EFParameterizationTests : IDisposable
     [TestMethod]
     public void Apply_NullValue_StaysALiteral()
     {
-        // Ordinal comparison: with OrdinalIgnoreCase, 'eq null' on a string calls ToUpper() on null,
-        // which is a separate, pre-existing null-handling issue.
-        var settings = new ApiQueryOptionsSettings { StringComparison = StringComparison.Ordinal };
         var query = new QueryCollection(new Dictionary<string, StringValues> { ["$filter"] = "Title eq null" });
 
-        string sql = _db.Posts.Apply(new ApiQueryOptions<BlogPost>(query, settings)).ToQueryString();
+        string sql = _db.Posts.Apply(new ApiQueryOptions<BlogPost>(query)).ToQueryString();
 
         sql.Should().NotContain("@");
     }

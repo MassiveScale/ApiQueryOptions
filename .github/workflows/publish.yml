@@ -30,17 +30,6 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
-        run: dotnet restore ApiQueryOptions.slnx
-
-      - name: Build
-        run: dotnet build ApiQueryOptions.slnx --no-restore --configuration Release /warnaserror
-
-      - name: Test
-        run: |
-          dotnet run --project tests/ApiQueryOptions.Tests/ApiQueryOptions.Tests.csproj --configuration Release
-          dotnet run --project tests/ApiQueryOptions.EntityFrameworkCore.Tests/ApiQueryOptions.EntityFrameworkCore.Tests.csproj --configuration Release
-
       # Strip a leading 'v' from the tag so '1.2.3' and 'v1.2.3' both produce '1.2.3'.
       - name: Resolve package version
         id: version
@@ -48,12 +37,30 @@ jobs:
           VERSION="${{ github.event.release.tag_name }}"
           echo "value=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Restore
+        run: dotnet restore ApiQueryOptions.slnx
+
+      # The version is passed to the build, not only to pack, so the assembly file and
+      # informational versions in the DLLs match the package version.
+      - name: Build
+        run: >
+          dotnet build ApiQueryOptions.slnx
+          --no-restore
+          --configuration Release
+          -p:Version=${{ steps.version.outputs.value }}
+          /warnaserror
+
+      - name: Test
+        run: |
+          dotnet run --project tests/ApiQueryOptions.Tests/ApiQueryOptions.Tests.csproj --configuration Release
+          dotnet run --project tests/ApiQueryOptions.EntityFrameworkCore.Tests/ApiQueryOptions.EntityFrameworkCore.Tests.csproj --configuration Release
+
       - name: Pack ApiQueryOptions
         run: >
           dotnet pack src/ApiQueryOptions/ApiQueryOptions.csproj
           --no-build
           --configuration Release
-          -p:PackageVersion=${{ steps.version.outputs.value }}
+          -p:Version=${{ steps.version.outputs.value }}
           --output ./nupkg
 
       - name: Pack ApiQueryOptions.EntityFrameworkCore
@@ -61,7 +68,7 @@ jobs:
           dotnet pack src/ApiQueryOptions.EntityFrameworkCore/ApiQueryOptions.EntityFrameworkCore.csproj
           --no-build
           --configuration Release
-          -p:PackageVersion=${{ steps.version.outputs.value }}
+          -p:Version=${{ steps.version.outputs.value }}
           --output ./nupkg
 
       # Exchange the GitHub Actions OIDC token for a short-lived NuGet API key
@@ -72,6 +79,7 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
+      # Pushing the .nupkg files also pushes the matching .snupkg symbol packages.
       - name: Push to NuGet.org
         run: |
           dotnet nuget push ./nupkg/*.nupkg \

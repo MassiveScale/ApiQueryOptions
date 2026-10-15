@@ -21,6 +21,8 @@ public sealed class ApiQueryOptionsSettings
     private readonly int maxFilterDepth = DefaultMaxFilterDepth;
     private readonly int maxFilterNodeCount = DefaultMaxFilterNodeCount;
     private readonly int? maxPageSize;
+    private readonly string? tieBreakerProperty;
+    private HashSet<string>? ownedParameterNames;
 
     /// <summary>
     /// The default number of items to return when the caller omits <c>$top</c>.
@@ -127,10 +129,29 @@ public sealed class ApiQueryOptionsSettings
     public IReadOnlyList<string> SkipTokenParameterNames { get; init; } = ["$skiptoken", "skiptoken"];
 
     /// <summary>
-    /// String comparison used for filter string comparisons (<c>eq</c>, <c>startsWith</c>, etc.).
-    /// Default: <see cref="StringComparison.OrdinalIgnoreCase"/>.
+    /// How <c>$filter</c> compares strings (<c>eq</c>, <c>lt</c>, <c>startswith</c>, etc.).
+    /// Default: <see cref="StringMatching.IgnoreCase"/>.
     /// </summary>
-    public StringComparison StringComparison { get; init; } = StringComparison.OrdinalIgnoreCase;
+    /// <remarks>
+    /// <see cref="StringMatching.IgnoreCase"/> wraps the column in <c>UPPER()</c> on database
+    /// providers, which prevents index use. Use <see cref="StringMatching.Database"/> with a
+    /// case-insensitive column collation for fast case-insensitive matching.
+    /// </remarks>
+    public StringMatching StringMatching { get; init; } = StringMatching.IgnoreCase;
+
+    /// <summary>
+    /// A property, ideally a unique key such as <c>Id</c>, that is appended as the last sort
+    /// column whenever <c>$top</c> or <c>$skip</c> is applied and <c>$orderby</c> does not
+    /// already include it. Without a unique final sort column, rows with equal sort values can
+    /// move between pages, so a client may see a row twice or miss it. Dot notation is supported.
+    /// <c>null</c> adds nothing. Default: <c>null</c>.
+    /// </summary>
+    /// <exception cref="ArgumentException">When set to an empty or whitespace string.</exception>
+    public string? TieBreakerProperty
+    {
+        get => tieBreakerProperty;
+        init => tieBreakerProperty = RequireNullOrNotBlank(value, nameof(TieBreakerProperty));
+    }
 
     /// <summary>
     /// Whether the <c>$top</c> query parameter is accepted. Default: <c>true</c>.
@@ -173,10 +194,54 @@ public sealed class ApiQueryOptionsSettings
             SkipParameterNames = SkipParameterNames,
             SkipTokenEnabled = SkipTokenEnabled,
             SkipTokenParameterNames = SkipTokenParameterNames,
-            StringComparison = StringComparison,
+            StringMatching = StringMatching,
+            TieBreakerProperty = TieBreakerProperty,
             TopEnabled = TopEnabled,
             TopParameterNames = TopParameterNames,
         };
+    }
+
+    /// <summary>
+    /// Returns every configured query parameter name, compared case-insensitively. The set is
+    /// built and the <c>*ParameterNames</c> lists are validated once per settings instance.
+    /// </summary>
+    /// <param name="paramName">The parameter name reported by the <see cref="ArgumentException"/>.</param>
+    /// <exception cref="ArgumentException">When a <c>*ParameterNames</c> list is <c>null</c> or empty.</exception>
+    internal IReadOnlySet<string> GetOwnedParameterNames(string paramName)
+    {
+        // A race only builds the same immutable set twice; failures are never cached.
+        return ownedParameterNames ??= CreateOwnedParameterNames(paramName);
+    }
+
+    private static void AddNames(HashSet<string> names, IReadOnlyList<string>? list, string listName, string paramName)
+    {
+        if (list is null || list.Count == 0)
+        {
+            throw new ArgumentException($"{listName} cannot be null or empty.", paramName);
+        }
+
+        names.UnionWith(list);
+    }
+
+    private HashSet<string> CreateOwnedParameterNames(string paramName)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddNames(names, SkipTokenParameterNames, nameof(SkipTokenParameterNames), paramName);
+        AddNames(names, ExpandParameterNames, nameof(ExpandParameterNames), paramName);
+        AddNames(names, FilterParameterNames, nameof(FilterParameterNames), paramName);
+        AddNames(names, OrderByParameterNames, nameof(OrderByParameterNames), paramName);
+        AddNames(names, TopParameterNames, nameof(TopParameterNames), paramName);
+        AddNames(names, SkipParameterNames, nameof(SkipParameterNames), paramName);
+        return names;
+    }
+    private static string? RequireNullOrNotBlank(string? value, string paramName)
+    {
+        if (value is not null && string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException("The value must be null or a property name.", paramName);
+        }
+
+        return value;
     }
 
     private static int RequirePositive(int value, string paramName)
@@ -194,4 +259,5 @@ public sealed class ApiQueryOptionsSettings
 
         return value;
     }
+
 }

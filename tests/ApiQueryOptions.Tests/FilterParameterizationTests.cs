@@ -52,7 +52,7 @@ public class FilterParameterizationTests
     [TestMethod]
     public void Apply_CaseSensitiveFunction_ValueIsNotAConstant()
     {
-        var settings = new ApiQueryOptionsSettings { StringComparison = StringComparison.Ordinal };
+        var settings = new ApiQueryOptionsSettings { StringMatching = StringMatching.CaseSensitive };
 
         IQueryable<ParamEntity> query = Filter("endswith(Name, 'la')", settings);
 

@@ -2,8 +2,11 @@ namespace ApiQueryOptions.Filter;
 
 /// <summary>
 /// A binary comparison node: <c>property op value</c>.
-/// <para>Value types: <see cref="string"/>, <see cref="int"/>, <see cref="decimal"/>,
-/// <see cref="bool"/>, <see cref="DateTimeOffset"/>, or <c>null</c>.</para>
+/// <para>Value types produced by <see cref="FilterParser"/>: <see cref="string"/>,
+/// <see cref="int"/>, <see cref="long"/> (integers outside the <see cref="int"/> range),
+/// <see cref="decimal"/> (numbers with a fraction, or integers outside the <see cref="long"/> range),
+/// <see cref="bool"/>, or <c>null</c>. Dates, times, GUIDs, and enum names are written as strings
+/// and converted to the property's type when the filter is applied.</para>
 /// </summary>
 public sealed class BinaryFilterNode : FilterNode
 {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using ApiQueryOptions.Exceptions;
 
 namespace ApiQueryOptions.Filter;
@@ -13,7 +14,7 @@ namespace ApiQueryOptions.Filter;
 /// func_call  → ('startsWith'|'endsWith'|'contains') '(' identifier ',' string ')'
 /// comparison → identifier op value
 /// op         → 'eq'|'ne'|'lt'|'gt'|'le'|'ge'
-/// value      → string | int | decimal | bool | null
+/// value      → string | integer | decimal | bool | null
 /// </code>
 /// Parenthesis nesting depth and the total node count are bounded so that hostile input
 /// cannot exhaust the stack or build an arbitrarily large expression tree.
@@ -198,6 +199,32 @@ public sealed class FilterParser
         return new FunctionFilterNode(func, property, value);
     }
 
+    /// <summary>
+    /// Parses an integer literal as the smallest of <see cref="int"/>, <see cref="long"/>, or
+    /// <see cref="decimal"/> that can hold it.
+    /// </summary>
+    private object ParseInteger(Token tok)
+    {
+        if (int.TryParse(tok.Raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int i))
+        {
+            return i;
+        }
+
+        if (long.TryParse(tok.Raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long l))
+        {
+            return l;
+        }
+
+        if (decimal.TryParse(tok.Raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out decimal d))
+        {
+            return d;
+        }
+
+        throw new FilterParseException(
+            $"Integer value '{tok.Raw}' is out of range at position {tok.Position}.",
+            _raw, tok.Position);
+    }
+
     private FilterNode ParseOr()
     {
         FilterNode left = ParseAnd();
@@ -257,14 +284,9 @@ public sealed class FilterParser
             TokenKind.NullLiteral => null,
             TokenKind.BoolLiteral => bool.Parse(tok.Raw),
             TokenKind.StringLiteral => tok.Raw,
-            TokenKind.IntLiteral => int.TryParse(tok.Raw, out int i)
-                                        ? (object)i
-                                        : throw new FilterParseException(
-                                            $"Integer value '{tok.Raw}' is out of range at position {tok.Position}.",
-                                            _raw, tok.Position),
-            TokenKind.DecimalLiteral => decimal.TryParse(tok.Raw, System.Globalization.NumberStyles.Number,
-                                            System.Globalization.CultureInfo.InvariantCulture, out decimal d)
-                                        ? (object)d
+            TokenKind.IntLiteral => ParseInteger(tok),
+            TokenKind.DecimalLiteral => decimal.TryParse(tok.Raw, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal d)
+                                        ? d
                                         : throw new FilterParseException(
                                             $"Decimal value '{tok.Raw}' is out of range at position {tok.Position}.",
                                             _raw, tok.Position),

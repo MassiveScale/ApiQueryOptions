@@ -249,10 +249,13 @@ public class IQueryableExtensionTests
     }
 
     [TestMethod]
-    public void ApplyFilter_PropertyNotFound_ThrowsInvalidOperation()
+    public void ApplyFilter_PropertyNotFound_ThrowsInvalidQueryOption()
     {
         var filter = new FilterQueryOption("NonExistent eq 'x'");
         Func<List<SampleEntity>> act = () => Q().ApplyFilter(filter, new ApiQueryOptionsSettings()).ToList();
-        act.Should().Throw<InvalidOperationException>();
+        InvalidQueryOptionException ex = act.Should().Throw<InvalidQueryOptionException>().Which;
+        ex.OptionName.Should().Be("filter");
+        ex.Property.Should().Be("NonExistent");
+        ex.Message.Should().Be("Property 'NonExistent' not found on type 'SampleEntity'.");
     }
 }

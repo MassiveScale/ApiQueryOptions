@@ -90,10 +90,17 @@ public sealed class ApiQueryOptionsBuilder
     public IReadOnlyList<string> SkipTokenParameterNames { get; set; } = ["$skiptoken", "skiptoken"];
 
     /// <summary>
-    /// String comparison used for filter string comparisons (<c>eq</c>, <c>startsWith</c>, etc.).
-    /// Default: <see cref="StringComparison.OrdinalIgnoreCase"/>.
+    /// How <c>$filter</c> compares strings (<c>eq</c>, <c>lt</c>, <c>startswith</c>, etc.).
+    /// Default: <see cref="StringMatching.IgnoreCase"/>.
     /// </summary>
-    public StringComparison StringComparison { get; set; } = StringComparison.OrdinalIgnoreCase;
+    public StringMatching StringMatching { get; set; } = StringMatching.IgnoreCase;
+
+    /// <summary>
+    /// A property, ideally a unique key such as <c>Id</c>, that is appended as the last sort
+    /// column whenever <c>$top</c> or <c>$skip</c> is applied and <c>$orderby</c> does not
+    /// already include it, so paging is stable. <c>null</c> adds nothing. Default: <c>null</c>.
+    /// </summary>
+    public string? TieBreakerProperty { get; set; }
 
     /// <summary>
     /// Whether the <c>$top</c> query parameter is accepted. Default: <c>true</c>.
@@ -110,6 +117,7 @@ public sealed class ApiQueryOptionsBuilder
     /// Builds an immutable <see cref="ApiQueryOptionsSettings"/> from the current builder state.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">When a page size or filter limit is zero or negative.</exception>
+    /// <exception cref="ArgumentException">When <see cref="TieBreakerProperty"/> is empty or whitespace.</exception>
     internal ApiQueryOptionsSettings Build() =>
         new()
         {
@@ -127,7 +135,8 @@ public sealed class ApiQueryOptionsBuilder
             SkipParameterNames = SkipParameterNames,
             SkipTokenEnabled = SkipTokenEnabled,
             SkipTokenParameterNames = SkipTokenParameterNames,
-            StringComparison = StringComparison,
+            StringMatching = StringMatching,
+            TieBreakerProperty = TieBreakerProperty,
             TopEnabled = TopEnabled,
             TopParameterNames = TopParameterNames,
         };
