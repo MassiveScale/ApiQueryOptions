@@ -180,13 +180,15 @@ When `SkipTokenEnabled` is `false`, `NextLink` returns an offset link instead (`
 ```csharp
 using ApiQueryOptions.Extensions;
 
-IQueryable<T> result = query.Apply(options);            // filter → orderby → skip → top
+IQueryable<T> result = query.Apply(options);            // filter → orderby → skip → top → expand*
 
 query = query.ApplyFilter(options.Filter!, settings);
 query = query.ApplyOrderBy(options.OrderBy!, settings);
 query = query.ApplySkip(options.Skip!, settings);
 query = query.ApplyTop(options.Top!, settings);
 ```
+
+\* `$expand` is applied as `.Include()` calls when the [ApiQueryOptions.EntityFrameworkCore](https://www.nuget.org/packages/ApiQueryOptions.EntityFrameworkCore) package is installed, and ignored otherwise.
 
 ---
 

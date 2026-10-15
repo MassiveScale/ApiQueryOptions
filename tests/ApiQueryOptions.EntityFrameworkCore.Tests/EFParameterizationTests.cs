@@ -1,4 +1,3 @@
-using ApiQueryOptions.EntityFrameworkCore.Extensions;
 using ApiQueryOptions.Extensions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -8,9 +7,8 @@ namespace ApiQueryOptions.EntityFrameworkCore.Tests;
 
 /// <summary>
 /// Uses the SQLite provider because <c>ToQueryString</c> needs a relational provider.
-/// This file imports both <c>ApiQueryOptions.Extensions</c> and
-/// <c>ApiQueryOptions.EntityFrameworkCore.Extensions</c>; it only compiles while the
-/// core <c>Apply</c> and the EF Core <c>ApplyWithExpand</c> have distinct names.
+/// This file deliberately imports only <c>ApiQueryOptions.Extensions</c>: the core <c>Apply</c>
+/// must still apply <c>$expand</c> when the EF Core package is installed.
 /// </summary>
 [TestClass]
 public sealed class EFParameterizationTests : IDisposable
@@ -30,15 +28,20 @@ public sealed class EFParameterizationTests : IDisposable
         return !trimmed.StartsWith(".param", StringComparison.Ordinal) && !trimmed.StartsWith("--", StringComparison.Ordinal);
     }
 
-    private static ApiQueryOptions<BlogPost> Options(string filter, string? expand = null)
+    private static ApiQueryOptions<T> Options<T>(string? filter, string? expand = null)
     {
-        var dict = new Dictionary<string, StringValues> { ["$filter"] = filter };
+        var dict = new Dictionary<string, StringValues>();
+        if (filter is not null)
+        {
+            dict["$filter"] = filter;
+        }
+
         if (expand is not null)
         {
             dict["$expand"] = expand;
         }
 
-        return new ApiQueryOptions<BlogPost>(new QueryCollection(dict));
+        return new ApiQueryOptions<T>(new QueryCollection(dict));
     }
 
     [TestMethod]
@@ -46,9 +49,9 @@ public sealed class EFParameterizationTests : IDisposable
     [DataRow("Title eq 'Secret Title'", "Secret Title")]
     [DataRow("contains(Title, 'needle')", "needle")]
     [DataRow("startswith(Title, 'prefix')", "prefix")]
-    public void ApplyWithExpand_FilterValue_IsSentAsSqlParameter(string filter, string value)
+    public void Apply_FilterValue_IsSentAsSqlParameter(string filter, string value)
     {
-        string sql = _db.Posts.ApplyWithExpand(Options(filter)).ToQueryString();
+        string sql = _db.Posts.Apply(Options<BlogPost>(filter)).ToQueryString();
 
         sql.Should().Contain("@");
         sql.Split('\n').Where(IsCommandLine)
@@ -56,55 +59,71 @@ public sealed class EFParameterizationTests : IDisposable
     }
 
     [TestMethod]
-    public void ApplyWithExpand_DifferentValues_ProduceIdenticalSql()
+    public void Apply_DifferentValues_ProduceIdenticalSql()
     {
         static string CommandText(string sql) =>
             string.Join('\n', sql.Split('\n').Where(IsCommandLine));
 
-        string first = CommandText(_db.Posts.ApplyWithExpand(Options("Title eq 'Alpha' and AuthorId gt 1")).ToQueryString());
-        string second = CommandText(_db.Posts.ApplyWithExpand(Options("Title eq 'Beta' and AuthorId gt 2")).ToQueryString());
+        string first = CommandText(_db.Posts.Apply(Options<BlogPost>("Title eq 'Alpha' and AuthorId gt 1")).ToQueryString());
+        string second = CommandText(_db.Posts.Apply(Options<BlogPost>("Title eq 'Beta' and AuthorId gt 2")).ToQueryString());
 
         first.Should().Be(second);
     }
 
     [TestMethod]
-    public void ApplyWithExpand_NullValue_StaysALiteral()
+    public void Apply_NullValue_StaysALiteral()
     {
         // Ordinal comparison: with OrdinalIgnoreCase, 'eq null' on a string calls ToUpper() on null,
         // which is a separate, pre-existing null-handling issue.
         var settings = new ApiQueryOptionsSettings { StringComparison = StringComparison.Ordinal };
         var query = new QueryCollection(new Dictionary<string, StringValues> { ["$filter"] = "Title eq null" });
 
-        string sql = _db.Posts.ApplyWithExpand(new ApiQueryOptions<BlogPost>(query, settings)).ToQueryString();
+        string sql = _db.Posts.Apply(new ApiQueryOptions<BlogPost>(query, settings)).ToQueryString();
 
         sql.Should().NotContain("@");
     }
 
     [TestMethod]
-    public void ApplyWithExpand_WithExpand_KeepsParametersAndJoins()
+    public void Apply_WithoutEfNamespace_IncludesExpand()
     {
-        string sql = _db.Posts.ApplyWithExpand(Options("AuthorId eq 7", expand: "Author")).ToQueryString();
+        string sql = _db.Posts.Apply(Options<BlogPost>("AuthorId eq 7", expand: "Author")).ToQueryString();
 
         sql.Should().Contain("JOIN").And.Contain("@");
     }
 
     [TestMethod]
-    public void CoreApply_AndApplyWithExpand_CoexistInOneFile()
+    public void Apply_NestedExpand_IncludesEveryLevel()
     {
-        ApiQueryOptions<BlogPost> options = Options("Id eq 1", expand: "Author");
+        string sql = _db.Authors.Apply(Options<Author>(filter: null, expand: "Posts.Comments")).ToQueryString();
 
-        string core = _db.Posts.Apply(options).ToQueryString();
-        string ef = _db.Posts.ApplyWithExpand(options).ToQueryString();
-
-        core.Should().NotContain("JOIN");
-        ef.Should().Contain("JOIN");
+        sql.Should().Contain("\"Posts\"").And.Contain("\"Comments\"");
     }
 
     [TestMethod]
-    public void ApplyWithExpand_NullOptions_ThrowsArgumentNull()
+    public void Apply_NoExpand_AddsNoJoin()
     {
-        Action act = () => _db.Posts.ApplyWithExpand(null!);
+        string sql = _db.Posts.Apply(Options<BlogPost>("Id eq 1")).ToQueryString();
 
-        act.Should().Throw<ArgumentNullException>();
+        sql.Should().NotContain("JOIN");
+    }
+
+    [TestMethod]
+    public void Apply_ExpandOnNonEfQuery_IsIgnored()
+    {
+        BlogPost[] posts = [new() { Id = 1, Title = "A" }, new() { Id = 2, Title = "B" }];
+
+        List<BlogPost> result = posts.AsQueryable().Apply(Options<BlogPost>("Id gt 0", expand: "Author")).ToList();
+
+        result.Select(p => p.Id).Should().Equal(1, 2);
+    }
+
+    [TestMethod]
+    public void Apply_ExpandOnValueTypeQuery_IsIgnored()
+    {
+        IQueryable<int> numbers = new[] { 3, 1, 2 }.AsQueryable();
+
+        List<int> result = numbers.Apply(Options<int>(filter: null, expand: "Anything")).ToList();
+
+        result.Should().Equal(3, 1, 2);
     }
 }

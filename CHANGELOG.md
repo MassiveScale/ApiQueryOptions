@@ -22,7 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 
-- **Breaking:** the EF Core `Apply` extension is renamed to `ApplyWithExpand`. Importing both `ApiQueryOptions.Extensions` and `ApiQueryOptions.EntityFrameworkCore.Extensions` in the same file caused an ambiguous call error (CS0121).
+- **Breaking:** the EF Core package no longer has its own `Apply` extension. The core `Apply` now applies `$expand` as `.Include()` calls whenever the `ApiQueryOptions.EntityFrameworkCore` package is installed, with no extra `using` needed. Before, importing both `ApiQueryOptions.Extensions` and `ApiQueryOptions.EntityFrameworkCore.Extensions` in the same file caused an ambiguous call error (CS0121). Importing only the core namespace silently ignored `$expand`. Code that imported only the EF Core namespace needs `using ApiQueryOptions.Extensions;`. `ApplyExpand` is unchanged.
+- The core `Apply` throws `ArgumentNullException` when `options` is `null`.
 - **Breaking:** when `SkipTokenEnabled` is `false`, `NextLink` builds an offset link (`$top` and the next `$skip`, other parameters forwarded) instead of a `$skiptoken` the server would ignore. It returns `null` when `$skip` is also disabled. `GetNextToken`, and `NextLink(int)` on an instance without a request, return `null` when skip tokens are disabled.
 - **Breaking:** `MaxPageSize`, `DefaultPageSize`, `MaxFilterDepth`, and `MaxFilterNodeCount` throw `ArgumentOutOfRangeException` when set to zero or a negative value. `TopQueryOption` rejects values below `1` and `SkipQueryOption` rejects negative values. A request with `$top` of zero or less, or a negative `$skip`, is treated as if the parameter were absent, the same as a non-numeric value.
 - **Breaking:** `ApiQueryOptionsModelBinder` throws `ArgumentException` when constructed with a type that is not a closed `ApiQueryOptions<T>`.

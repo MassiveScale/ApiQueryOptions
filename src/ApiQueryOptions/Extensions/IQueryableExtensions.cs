@@ -19,11 +19,15 @@ public static class IQueryableExtensions
 
     /// <summary>
     /// Applies all non-null options from <paramref name="options"/> to <paramref name="query"/>
-    /// in the order: Filter → OrderBy → Skip → Top.
-    /// <c>Expand</c> is not applied here; use the EF Core companion package.
+    /// in the order: Filter → OrderBy → Skip → Top → Expand.
+    /// <c>Expand</c> is applied as EF Core <c>.Include()</c> calls when the
+    /// <c>ApiQueryOptions.EntityFrameworkCore</c> package is installed; no <c>using</c> for that
+    /// package is needed. Without it, or for value-type entities, <c>Expand</c> is ignored.
     /// </summary>
     public static IQueryable<T> Apply<T>(this IQueryable<T> query, ApiQueryOptions<T> options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         if (options.Filter is not null)
         {
             query = query.ApplyFilter(options.Filter, options.Settings);
@@ -42,6 +46,11 @@ public static class IQueryableExtensions
         if (options.Top is not null)
         {
             query = query.ApplyTop(options.Top, options.Settings);
+        }
+
+        if (options.Expand is not null)
+        {
+            query = ExpandApplier.Apply(query, options.Expand, options.Settings);
         }
 
         return query;

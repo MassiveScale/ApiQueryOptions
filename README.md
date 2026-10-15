@@ -55,14 +55,14 @@ builder.Services.AddApiQueryOptions(new ApiQueryOptionsSettings
 public async Task<IActionResult> GetProducts(ApiQueryOptions<Product> options)
 {
     var query = _db.Products
-                   .ApplyWithExpand(options)   // EF Core: filter + orderby + skip + top + expand
+                   .Apply(options)      // filter + orderby + skip + top (+ expand with EF Core)
                    .AsNoTracking();
 
     return Ok(await query.ToListAsync());
 }
 ```
 
-> `Apply` (filter + orderby + skip + top) is in `ApiQueryOptions.Extensions`. `ApplyWithExpand` (the same pipeline plus `$expand` → `.Include()`) is in `ApiQueryOptions.EntityFrameworkCore.Extensions`. The names differ so both namespaces can be imported in the same file.
+> `Apply` is in `ApiQueryOptions.Extensions`. When the `ApiQueryOptions.EntityFrameworkCore` package is installed, the same `Apply` also turns `$expand` into `.Include()` calls. You don't need a `using` for the EF Core namespace.
 
 ---
 
@@ -142,7 +142,7 @@ All extension methods build deferred LINQ expression trees. Nothing is executed 
 ```csharp
 using ApiQueryOptions.Extensions;
 
-// Apply all options in one call (filter → orderby → skip → top):
+// Apply all options in one call (filter → orderby → skip → top → expand):
 IQueryable<T> result = query.Apply(options);
 
 // Or apply individual options:
@@ -152,19 +152,19 @@ query = query.ApplySkip(options.Skip!, options.Settings);
 query = query.ApplyTop(options.Top!, options.Settings);
 ```
 
-### EF Core package (`ApiQueryOptions.EntityFrameworkCore.Extensions`)
+`Apply` only handles `$expand` when the EF Core package is installed. Without it, `$expand` is ignored.
+
+### EF Core package (`ApiQueryOptions.EntityFrameworkCore`)
+
+Install the package and `Apply` turns `$expand` into `.Include()` calls. Nothing else changes in your code, and you don't need a `using` for the EF Core namespace. The whole pipeline translates to a single SQL query.
+
+To apply only `$expand`, import the EF Core namespace:
 
 ```csharp
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
 
-// Apply all options including $expand → .Include():
-IQueryable<T> result = query.ApplyWithExpand(options);   // filter + orderby + skip + top + expand
-
-// Apply expand separately:
 query = query.ApplyExpand(options.Expand!, options.Settings);
 ```
-
-`ApplyWithExpand` calls the core pipeline first, then adds `.Include()` calls for each navigation property — the entire operation translates to a single SQL query.
 
 ---
 
