@@ -94,7 +94,7 @@ All parameters accept both the `$`-prefixed OData form (`$filter=...`) and the b
 | `le`     | Less than or equal    | `Score le 100`        |
 | `ge`     | Greater than or equal | `Score ge 0`          |
 
-String `eq`/`ne` comparisons use the `StringComparison` configured in `ApiQueryOptionsSettings` (default: `OrdinalIgnoreCase`).
+String comparisons, including `lt`, `gt`, `le`, and `ge`, follow the `StringMatching` setting. The default is case-insensitive; see [String matching](#string-matching).
 
 ### Logical operators
 
@@ -115,13 +115,19 @@ Use parentheses to override precedence: `(A eq 1 or B eq 2) and C eq 3`.
 
 ### Supported literal types
 
-| Type    | Example                           |
-| ------- | --------------------------------- |
-| String  | `'O''Brien'` (escape `'` as `''`) |
-| Integer | `42`, `-5`                        |
-| Decimal | `9.99`                            |
-| Boolean | `true`, `false`                   |
-| Null    | `null`                            |
+| Type          | Example                                  | Notes                                                                                                                  |
+|---------------|------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| String        | `'O''Brien'`                             | Escape `'` as `''`                                                                                                     |
+| Integer       | `42`, `-5`, `5000000000`                 | Values outside the `int` range are read as `long`, then `decimal`                                                      |
+| Decimal       | `9.99`                                   | Rejected for an integer property instead of being rounded                                                              |
+| Boolean       | `true`, `false`                          |                                                                                                                        |
+| Null          | `null`                                   | Only with `eq` and `ne`                                                                                                |
+| Date and time | `'2024-01-15'`, `'2024-01-15T10:30:00Z'` | Written as a string; read as `DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly`, or `TimeSpan` to match the property |
+| GUID          | `'5f0c2b8e-8f3a-4c51-9d6e-2a7b1c0d9e4f'` | Written as a string                                                                                                    |
+| Enum          | `'Active'`, `1`                          | Member name in any case, or its number                                                                                 |
+
+Values are converted to the property's type with the invariant culture, so results never depend on the server's culture. A value that does not fit the property type, such as Age eq 1.5 or Age eq 'abc' on an int property, throws InvalidQueryOptionException.
+
 
 ### Dotted property paths
 
@@ -238,11 +244,14 @@ var settings = new ApiQueryOptionsSettings
     TopEnabled       = true,   // accept $top
     SkipEnabled      = true,   // accept $skip
     SkipTokenEnabled = true,   // accept $skiptoken
-    StringComparison = StringComparison.OrdinalIgnoreCase,  // string eq/ne/functions
+    StringMatching   = StringMatching.IgnoreCase,  // how $filter compares strings
+    TieBreakerProperty = "Id", // appended to the sort when paging (default: null)
     MaxFilterDepth     = 32,   // max parenthesis nesting in $filter
     MaxFilterNodeCount = 100,  // max comparisons + functions + and/or in $filter
 };
 ```
+
+`StringMatching`, `TieBreakerProperty`, the page sizes, and the `*Enabled` switches can also be overridden for one controller or action with `[ApiQueryOptions(...)]`.
 
 `MaxPageSize`, `DefaultPageSize`, `MaxFilterDepth`, and `MaxFilterNodeCount` must be positive; setting zero or a negative value throws `ArgumentOutOfRangeException` at startup. A request whose `$top` is zero or negative, or whose `$skip` is negative, is treated as if the parameter were absent.
 
@@ -253,6 +262,29 @@ When `SkipTokenEnabled` is `false`, `NextLink` builds offset links instead: `$to
 When an option is disabled, any matching query key is **silently ignored** at parse time — no exception is thrown. The corresponding property on `ApiQueryOptions<T>` will be `null`.
 
 Calling an `Apply*` extension method directly with a disabled setting does throw `QueryOptionDisabledException`.
+
+### String matching
+
+`StringMatching` controls how `$filter` compares strings in `eq`, `ne`, `lt`, `gt`, `le`, `ge`, `startswith`, `endswith`, and `contains`.
+| Value                  | In memory                            | Database providers (EF Core)                                                                                         |
+|------------------------|--------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `IgnoreCase` (default) | `StringComparison.OrdinalIgnoreCase` | `UPPER(column)` compared with a parameter upper-cased on the server. The database cannot use an index on the column. |
+| `CaseSensitive`        | `StringComparison.Ordinal`           | Plain comparison. Case-sensitive only when the column collation is.                                                  |
+| `Database`             | Plain .NET operators and methods     | Plain comparison. The column collation decides, and indexes can be used.                                             |
+
+`IgnoreCase` is culture-invariant, so `'istanbul'` matches `Istanbul` on a server running in Turkish, and it is null-safe: rows with a `null` value never match a string function or an ordering operator, and `Name eq null` becomes a plain `IS NULL` check.
+
+On EF Core, `IgnoreCase` wraps the column in `UPPER()`, which stops the database from using an index on that column. For large tables, give the column a case-insensitive collation (for example `SQL_Latin1_General_CP1_CI_AS` on SQL Server, or `NOCASE` on SQLite) and use `StringMatching.Database`. The comparison is then a plain `=` or `LIKE` that can use the index.
+
+### Stable paging
+
+Paging with `$top` and `$skip` is only stable when the sort order is unique. If several rows share the same sort value, the database may return them in a different order on each request, so a row can appear on two pages or on none. Set `TieBreakerProperty` to a unique column, usually the primary key:
+
+```csharp
+builder.Services.AddApiQueryOptions(o => o.TieBreakerProperty = "Id");
+```
+
+Whenever `Apply` applies `$top` or `$skip`, it adds `ThenBy(Id)` after the client's `$orderby`, or `OrderBy(Id)` when there is no `$orderby`. Nothing is added when `$orderby` already includes the property or when the request does not page. A tie-breaker that does not exist on `T` throws `InvalidQueryOptionException` when the query is built.
 
 ### Configurable parameter names
 
@@ -286,13 +318,13 @@ Custom names are automatically excluded from the query-string passthrough in `Ne
 
 ```csharp
 // From an HttpRequest (minimal API or middleware):
-var options = ApiQueryOptions.FromRequest<Product>(request, settings);
+var options = ApiQueryOptions<Product>.FromRequest(request, settings);
 
 // From an HttpContext — safe when context is null (returns empty no-op instance):
-var options = ApiQueryOptions.FromRequest<Product>(httpContext, settings);
+var options = ApiQueryOptions<Product>.FromRequest(httpContext, settings);
 
 // From an IHttpContextAccessor (in a service):
-var options = ApiQueryOptions.FromRequest<Product>(httpContextAccessor, settings);
+var options = ApiQueryOptions<Product>.FromRequest(httpContextAccessor, settings);
 
 // From any IQueryCollection:
 var options = new ApiQueryOptions<Product>(queryCollection, settings);
@@ -302,14 +334,14 @@ var options = new ApiQueryOptions<Product>(queryCollection, settings);
 
 ## Error handling
 
-| Exception                      | When                                                                                                             |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `FilterParseException`         | The `$filter` string contains a syntax error. Thrown lazily on first access to `FilterQueryOption.FilterClause`. |
-| `QueryOptionDisabledException` | An `Apply*` method is called directly against a disabled option.                                                 |
-| `FormatException`              | `SkipTokenEncoder.Decode` receives a malformed or tampered token.                                                |
-| `InvalidOperationException`    | A filter or orderby references a property that does not exist on `T`.                                            |
+| Exception                      | Base type                   | When                                                                                                                                                                                   |
+|--------------------------------|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `FilterParseException`         | `ApiQueryOptionsException`  | The `$filter` string has a syntax error or exceeds a filter limit. Exposes `RawFilter` and `Position`.                                                                                 |
+| `InvalidQueryOptionException`  | `ApiQueryOptionsException`  | An option names an unknown property, uses a value that does not fit the property type, or uses an operator or function the type does not support. Exposes `OptionName` and `Property`. |
+| `QueryOptionDisabledException` | `InvalidOperationException` | An `Apply*` method is called directly against a disabled option. This is a programming error, not bad client input.                                                                    |
+| `FormatException`              | `SystemException`           | `SkipTokenEncoder.Decode` receives a malformed or tampered token.                                                                                                                      |
 
-`FilterParseException` exposes `RawFilter` and `Position` for diagnostic messages.
+Every exception caused by bad client input derives from `ApiQueryOptionsException`, so one `catch` turns all of them into a `400 Bad Request`. `FilterParseException` is thrown lazily, on first access to `FilterQueryOption.FilterClause`, which normally happens inside `Apply`. With model binding, a malformed `$skiptoken` is added to `ModelState` instead of throwing.
 
 ---
 
@@ -341,9 +373,9 @@ public class ProductsController : ControllerBase
 
             return Ok(PagedResponse.Create(items, options, Request));
         }
-        catch (FilterParseException ex)
+        catch (ApiQueryOptionsException ex)
         {
-            return BadRequest(new { error = "Invalid $filter", detail = ex.Message, position = ex.Position });
+            return BadRequest(new { error = ex.Message });
         }
     }
 }
@@ -392,13 +424,16 @@ See [examples/README.md](examples/README.md) for example HTTP requests and the d
 src/
   ApiQueryOptions/                        # Core package
     ApiQueryOptions.cs                    # ApiQueryOptions<T> — main entry point
-    ApiQueryOptionsSettings.cs            # Per-option enable/disable + StringComparison
+    ApiQueryOptionsSettings.cs            # Per-option enable/disable, paging, StringMatching
+    StringMatching.cs                     # IgnoreCase / CaseSensitive / Database
     PagedResponse.cs                      # PagedResponse<T> — paged response envelope
     Binding/
       ApiQueryOptionsModelBinder.cs       # IModelBinder implementation
       ApiQueryOptionsModelBinderProvider.cs
     Exceptions/
+      ApiQueryOptionsException.cs         # Base type for bad client input
       FilterParseException.cs
+      InvalidQueryOptionException.cs
       QueryOptionDisabledException.cs
     Extensions/
       IQueryableExtensions.cs             # Apply, ApplyFilter, ApplyOrderBy, ApplySkip, ApplyTop
@@ -410,6 +445,7 @@ src/
       FunctionFilterNode.cs               # startswith / endswith / contains
       FilterLexer.cs                      # Tokeniser
       FilterParser.cs                     # Recursive-descent parser
+      FilterValueConverter.cs             # Invariant-culture literal conversion
       FilterOperator.cs / LogicalOperator.cs / StringFunction.cs
     Options/
       ExpandQueryOption.cs
@@ -422,10 +458,10 @@ src/
 
   ApiQueryOptions.EntityFrameworkCore/    # EF Core companion
     Extensions/
-      EFQueryableExtensions.cs            # Apply (with expand), ApplyExpand
+      EFQueryableExtensions.cs            # ApplyExpand
 
 tests/
-  ApiQueryOptions.Tests/                  # xUnit, FluentAssertions, Moq
+  ApiQueryOptions.Tests/                  # MSTest, AwesomeAssertions, NSubstitute
   ApiQueryOptions.EntityFrameworkCore.Tests/
 ```
 

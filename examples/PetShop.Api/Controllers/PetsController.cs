@@ -51,17 +51,9 @@ public sealed class PetsController : ControllerBase
                 options: queryOptions,
                 request: Request));
         }
-        catch (FilterParseException ex)
+        catch (ApiQueryOptionsException ex)
         {
-            return BadRequest(new
-            {
-                error = "Invalid $filter expression.",
-                detail = ex.Message,
-                position = ex.Position,
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
+            // Every client mistake in $filter, $orderby, or $expand derives from ApiQueryOptionsException.
             return BadRequest(new { error = ex.Message });
         }
     }
@@ -81,17 +73,9 @@ public sealed class PetsController : ControllerBase
                 options: queryOptions,
                 request: Request));
         }
-        catch (FilterParseException ex)
+        catch (ApiQueryOptionsException ex)
         {
-            return BadRequest(new
-            {
-                error = "Invalid $filter expression.",
-                detail = ex.Message,
-                position = ex.Position,
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
+            // Every client mistake in $filter, $orderby, or $expand derives from ApiQueryOptionsException.
             return BadRequest(new { error = ex.Message });
         }
     }

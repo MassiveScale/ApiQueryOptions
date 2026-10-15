@@ -378,7 +378,7 @@
                 }
               ]
             },
-            "description": "Demonstrates error handling. The `???` token is not a valid operator and triggers a `FilterParseException`, returning 400 with `error`, `detail`, and `position` fields."
+            "description": "Demonstrates error handling. The `???` token is not a valid operator and triggers a `FilterParseException` (an `ApiQueryOptionsException`), returning 400 with an `error` field."
           }
         }
       ]
@@ -664,7 +664,7 @@
                 }
               ]
             },
-            "description": "Truncated filter expression triggers a `FilterParseException`. Returns 400 with `error`, `detail`, and `position` fields."
+            "description": "Truncated filter expression triggers a `FilterParseException` (an `ApiQueryOptionsException`). Returns 400 with an `error` field."
           }
         }
       ]

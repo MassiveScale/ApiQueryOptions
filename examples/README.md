@@ -14,8 +14,8 @@ Uses `ApiQueryOptions` (no EF Core). All data is held in an in-memory `List<Pet>
 
 - `$filter` with comparison operators, `and`/`or`, and string functions
 - `$orderby` with `asc` / `desc`
-- `$top` / `$skip` offset paging
-- Error handling for malformed `$filter`
+- `$top` / `$skip` offset paging, kept stable by `TieBreakerProperty = "Id"`
+- Error handling: any `ApiQueryOptionsException` (a malformed `$filter`, an unknown property, or a value that does not fit the property type) becomes `400 Bad Request`
 
 ### Run
 
@@ -71,6 +71,7 @@ Uses `ApiQueryOptions` **and** `ApiQueryOptions.EntityFrameworkCore`. The data m
 - `$expand=Owner` — includes the pet's owner (LEFT JOIN)
 - `$expand=Appointments` — includes the pet's scheduled appointments
 - `$expand=Owner,Appointments` — both at once
+- An unknown `$expand` path returns `400 Bad Request` instead of failing inside EF Core
 - The entire pipeline (filter → order → page → expand) sent as a single SQL round-trip against a real provider
 
 ### Run
