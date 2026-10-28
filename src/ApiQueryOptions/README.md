@@ -190,13 +190,14 @@ using ApiQueryOptions.Extensions;
 
 IQueryable<T> result = query.Apply(options);            // filter → orderby → skip → top → expand*
 
+// Call these on the unpaged query; they do not remove a Skip or Take that is already applied.
+IQueryable<T> filtered = query.ApplyFilter(options);    // $filter only; unchanged when there is none
+int total = query.Count(options);                       // items matching $filter, across all pages
+
 query = query.ApplyFilter(options.Filter!, settings);
 query = query.ApplyOrderBy(options.OrderBy!, settings);
 query = query.ApplySkip(options.Skip!, settings);
 query = query.ApplyTop(options.Top!, settings);
-
-IQueryable<T> filtered = query.ApplyFilter(options);    // $filter only; unchanged when there is none
-int total = query.Count(options);                       // items matching $filter, across all pages
 ```
 
 \* `$expand` is applied as `.Include()` calls when the [ApiQueryOptions.EntityFrameworkCore](https://www.nuget.org/packages/ApiQueryOptions.EntityFrameworkCore) package is installed, and ignored otherwise.

@@ -151,15 +151,16 @@ using ApiQueryOptions.Extensions;
 // Apply all options in one call (filter → orderby → skip → top → expand):
 IQueryable<T> result = query.Apply(options);
 
+// Apply only $filter (no null check needed), or count the filtered items across all pages.
+// Call these on the unpaged query; they do not remove a Skip or Take that is already applied.
+IQueryable<T> filtered = query.ApplyFilter(options);
+int total = query.Count(options);
+
 // Or apply individual options:
 query = query.ApplyFilter(options.Filter!, options.Settings);
 query = query.ApplyOrderBy(options.OrderBy!, options.Settings);
 query = query.ApplySkip(options.Skip!, options.Settings);
 query = query.ApplyTop(options.Top!, options.Settings);
-
-// Apply only $filter (no null check needed), or count the filtered items across all pages:
-IQueryable<T> filtered = query.ApplyFilter(options);
-int total = query.Count(options);
 ```
 
 `Apply` only handles `$expand` when the EF Core package is installed. Without it, `$expand` is ignored.
