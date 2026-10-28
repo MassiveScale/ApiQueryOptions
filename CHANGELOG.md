@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [1.1.0] - YYYY-MM-DD
+
+### Added
+
+- **Filtered counts** — `query.Count(options)` in the core package and `await query.CountAsync(options, cancellationToken)` in the EF Core package count every item that matches `$filter`, across all pages, ignoring `$orderby`, `$skip`, `$top`, and `$expand`. Calling `.Count()` on the result of `Apply` counts only the current page. The result is the `totalCount` to pass to `PagedResponse.Create`.
+- **`ApplyFilter(options)`** — applies only the `$filter` from an `ApiQueryOptions<T>`, and returns the query unchanged when there is no filter. `Apply`, `Count`, and `CountAsync` all filter through it, so the count always matches the rows the pages come from.
+
+### Fixed
+
+- **README count examples** — the paging examples counted the whole table instead of the filtered items, which gave the wrong total whenever `$filter` was set.
+
 ## [1.0.0] - YYYY-MM-DD
 
 First stable release. Everything below changed since `1.0.0-beta5`.

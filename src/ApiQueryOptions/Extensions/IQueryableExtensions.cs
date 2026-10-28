@@ -9,7 +9,8 @@ namespace ApiQueryOptions.Extensions;
 
 /// <summary>
 /// IQueryable&lt;T&gt; extension methods that compose deferred LINQ expression trees.
-/// All methods operate on the query object only — nothing is enumerated.
+/// The <c>Apply*</c> methods operate on the query object only — nothing is enumerated.
+/// <see cref="Count{T}"/> runs the query to count the filtered items.
 /// </summary>
 public static class IQueryableExtensions
 {
@@ -84,12 +85,7 @@ public static class IQueryableExtensions
     /// </exception>
     public static IQueryable<T> Apply<T>(this IQueryable<T> query, ApiQueryOptions<T> options)
     {
-        ArgumentNullException.ThrowIfNull(options);
-
-        if (options.Filter is not null)
-        {
-            query = query.ApplyFilter(options.Filter, options.Settings);
-        }
+        query = query.ApplyFilter(options);
 
         if (options.OrderBy is not null)
         {
@@ -117,6 +113,33 @@ public static class IQueryableExtensions
         }
 
         return query;
+    }
+
+    /// <summary>
+    /// Counts every item that matches the <c>$filter</c> in <paramref name="options"/>, across all
+    /// pages. <c>$orderby</c>, <c>$skip</c>, <c>$top</c>, and <c>$expand</c> are ignored, so the
+    /// result is the total to pass to <see cref="PagedResponse.Create{T}"/> as <c>totalCount</c>.
+    /// This call runs the query synchronously; with EF Core, use <c>CountAsync(options)</c> from
+    /// <c>ApiQueryOptions.EntityFrameworkCore.Extensions</c> instead.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">When <paramref name="options"/> is <c>null</c>.</exception>
+    /// <exception cref="InvalidQueryOptionException">When the filter cannot be applied to <typeparamref name="T"/>.</exception>
+    public static int Count<T>(this IQueryable<T> query, ApiQueryOptions<T> options) =>
+        query.ApplyFilter(options).Count();
+
+    /// <summary>
+    /// Applies only the <c>$filter</c> from <paramref name="options"/>, or returns
+    /// <paramref name="query"/> unchanged when there is no filter. <c>$orderby</c>, <c>$skip</c>,
+    /// <c>$top</c>, and <c>$expand</c> are ignored. <see cref="Apply{T}"/> filters with this method,
+    /// so a count built on its result always matches the rows the pages are taken from.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">When <paramref name="options"/> is <c>null</c>.</exception>
+    /// <exception cref="InvalidQueryOptionException">When the filter cannot be applied to <typeparamref name="T"/>.</exception>
+    public static IQueryable<T> ApplyFilter<T>(this IQueryable<T> query, ApiQueryOptions<T> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return options.Filter is null ? query : query.ApplyFilter(options.Filter, options.Settings);
     }
 
     /// <summary>

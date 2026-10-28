@@ -161,7 +161,7 @@ GET /api/products?$top=25&$skip=25
 public IActionResult Get(ApiQueryOptions<Product> options)
 {
     List<Product> items = _db.Products.Apply(options).ToList();
-    int total = _db.Products.Count();
+    int total = _db.Products.Count(options);  // every item matching $filter, across all pages
 
     return Ok(new
     {
@@ -170,6 +170,8 @@ public IActionResult Get(ApiQueryOptions<Product> options)
     });
 }
 ```
+
+`Count(options)` applies only `$filter`, so it returns the total number of matching items. Calling `.Count()` on the result of `Apply` would count only the current page. On EF Core, use `CountAsync(options)` from the [ApiQueryOptions.EntityFrameworkCore](https://www.nuget.org/packages/ApiQueryOptions.EntityFrameworkCore) package so the count does not block a thread.
 
 The client passes the returned cursor as `$skiptoken` on the next request:
 
@@ -192,6 +194,9 @@ query = query.ApplyFilter(options.Filter!, settings);
 query = query.ApplyOrderBy(options.OrderBy!, settings);
 query = query.ApplySkip(options.Skip!, settings);
 query = query.ApplyTop(options.Top!, settings);
+
+IQueryable<T> filtered = query.ApplyFilter(options);    // $filter only; unchanged when there is none
+int total = query.Count(options);                       // items matching $filter, across all pages
 ```
 
 \* `$expand` is applied as `.Include()` calls when the [ApiQueryOptions.EntityFrameworkCore](https://www.nuget.org/packages/ApiQueryOptions.EntityFrameworkCore) package is installed, and ignored otherwise.

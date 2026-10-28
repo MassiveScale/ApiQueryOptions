@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>ApiQueryOptions.EntityFrameworkCore</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Description>EF Core companion for ApiQueryOptions — applies expand (Include), filter, orderby, skip, and top as a single deferred SQL query.</Description>
     <PackageTags>aspnetcore;odata;efcore;entityframeworkcore;queryoptions;rest;api</PackageTags>
   </PropertyGroup>
