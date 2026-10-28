@@ -151,6 +151,11 @@ using ApiQueryOptions.Extensions;
 // Apply all options in one call (filter → orderby → skip → top → expand):
 IQueryable<T> result = query.Apply(options);
 
+// Apply only $filter (no null check needed), or count the filtered items across all pages.
+// Call these on the unpaged query; they do not remove a Skip or Take that is already applied.
+IQueryable<T> filtered = query.ApplyFilter(options);
+int total = query.Count(options);
+
 // Or apply individual options:
 query = query.ApplyFilter(options.Filter!, options.Settings);
 query = query.ApplyOrderBy(options.OrderBy!, options.Settings);
@@ -159,6 +164,8 @@ query = query.ApplyTop(options.Top!, options.Settings);
 ```
 
 `Apply` only handles `$expand` when the EF Core package is installed. Without it, `$expand` is ignored.
+
+`Count(options)` and `ApplyFilter(options)` ignore `$orderby`, `$skip`, `$top`, and `$expand`, so the count is the total number of matching items, not the size of the current page. `Count` runs synchronously; on EF Core, use `CountAsync(options)` instead.
 
 ### EF Core package (`ApiQueryOptions.EntityFrameworkCore`)
 
@@ -170,6 +177,14 @@ To apply only `$expand`, import the EF Core namespace:
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
 
 query = query.ApplyExpand(options.Expand!, options.Settings);
+```
+
+The same namespace adds `CountAsync(options)`, which counts the items that match `$filter` across all pages without blocking a thread:
+
+```csharp
+using ApiQueryOptions.EntityFrameworkCore.Extensions;
+
+int total = await _db.Products.CountAsync(options, cancellationToken);
 ```
 
 ---
@@ -205,10 +220,14 @@ public async Task<IActionResult> Get(ApiQueryOptions<Product> options)
 `nextLink` is `null` when the current page is the last page. Pass a `totalCount` to include the total and to suppress `nextLink` precisely when all records have been delivered:
 
 ```csharp
-int total = await _db.Products.CountAsync();
+using ApiQueryOptions.EntityFrameworkCore.Extensions;
+
+int total = await _db.Products.CountAsync(options);
 List<Product> items = await _db.Products.Apply(options).AsNoTracking().ToListAsync();
 return Ok(PagedResponse.Create(items, options, Request, totalCount: total));
 ```
+
+`CountAsync(options)` counts every item that matches `$filter`, across all pages. Calling `.Count()` on the result of `Apply` would count only the current page, because `$skip` and `$top` are already applied. Without EF Core, use the synchronous `Count(options)` from `ApiQueryOptions.Extensions`.
 
 The client follows `nextLink` verbatim — the token encodes `$filter`, `$orderby`, `$top`, and the advanced `$skip`, so the next request needs no additional parameters.
 
@@ -436,7 +455,7 @@ src/
       InvalidQueryOptionException.cs
       QueryOptionDisabledException.cs
     Extensions/
-      IQueryableExtensions.cs             # Apply, ApplyFilter, ApplyOrderBy, ApplySkip, ApplyTop
+      IQueryableExtensions.cs             # Apply, ApplyFilter, ApplyOrderBy, ApplySkip, ApplyTop, Count
       ServiceCollectionExtensions.cs      # AddApiQueryOptions()
     Filter/
       FilterClause.cs / FilterNode.cs     # AST root & base type
@@ -458,7 +477,7 @@ src/
 
   ApiQueryOptions.EntityFrameworkCore/    # EF Core companion
     Extensions/
-      EFQueryableExtensions.cs            # ApplyExpand
+      EFQueryableExtensions.cs            # ApplyExpand, CountAsync
 
 tests/
   ApiQueryOptions.Tests/                  # MSTest, AwesomeAssertions, NSubstitute

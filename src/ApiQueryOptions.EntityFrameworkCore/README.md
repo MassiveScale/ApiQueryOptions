@@ -32,19 +32,24 @@ builder.Services.AddApiQueryOptions();
 With this package installed, the core `Apply` also handles `$expand`. You don't need a `using` for this package's namespace.
 
 ```csharp
+using ApiQueryOptions.EntityFrameworkCore.Extensions;
 using ApiQueryOptions.Extensions;
 
 [HttpGet]
 public async Task<IActionResult> Get(ApiQueryOptions<Order> options)
 {
+    int total = await _db.Orders.CountAsync(options);  // every order matching $filter, across all pages
+
     List<Order> items = await _db.Orders
                                  .Apply(options)        // filter + orderby + skip + top + expand
                                  .AsNoTracking()
                                  .ToListAsync();
 
-    return Ok(new { value = items, nextLink = options.NextLink(items.Count) });
+    return Ok(PagedResponse.Create(items, options, Request, totalCount: total));
 }
 ```
+
+`CountAsync(options)` needs this package's namespace. Leave it out when you don't need the total.
 
 ### 3. Request with `$expand`
 
@@ -58,15 +63,17 @@ EF Core eagerly loads the `Customer` navigation property and `Lines` collection 
 
 ## What this package adds
 
-| Feature                          | `ApiQueryOptions` | This package |
-| -------------------------------- | :---------------: | :----------: |
-| `$filter` → `Where()`           | ✔                 | ✔            |
-| `$orderby` → `OrderBy()`        | ✔                 | ✔            |
-| `$top` → `Take()`               | ✔                 | ✔            |
-| `$skip` → `Skip()`              | ✔                 | ✔            |
-| Cursor pagination (`NextLink`)   | ✔                 | ✔            |
-| `$expand` → `.Include()`        |                   | ✔            |
-| Async `.ToListAsync()` support   |                   | ✔            |
+| Feature                             | `ApiQueryOptions` | This package |
+|-------------------------------------|:-----------------:|:------------:|
+| `$filter` → `Where()`               | ✔                 | ✔            |
+| `$orderby` → `OrderBy()`            | ✔                 | ✔            |
+| `$top` → `Take()`                   | ✔                 | ✔            |
+| `$skip` → `Skip()`                  | ✔                 | ✔            |
+| Cursor pagination (`NextLink`)      | ✔                 | ✔            |
+| Filtered count (`Count`)            | ✔                 | ✔            |
+| `$expand` → `.Include()`            |                   | ✔            |
+| Async `.ToListAsync()` support      |                   | ✔            |
+| Async filtered count (`CountAsync`) |                   | ✔            |
 
 ---
 
@@ -78,10 +85,13 @@ using ApiQueryOptions.Extensions;
 // Full pipeline — filter → orderby → skip → top → expand:
 IQueryable<T> result = query.Apply(options);
 
-// Expand only (needs this package's namespace):
+// Expand only, and the async filtered count (both need this package's namespace):
 using ApiQueryOptions.EntityFrameworkCore.Extensions;
 IQueryable<T> result = query.ApplyExpand(options.Expand!, options.Settings);
+int total = await query.CountAsync(options, cancellationToken);
 ```
+
+`CountAsync(options)` applies only `$filter` and ignores `$orderby`, `$skip`, `$top`, and `$expand`, so it returns the total number of matching items rather than the size of the current page. It reads the filter from `options`, which a `$skiptoken` restores, so the total stays the same on every page.
 
 `Apply` runs filter, orderby, skip, and top, then appends `.Include()` calls for each path listed in `$expand`. The whole chain is deferred and translates to a single SQL round-trip. Filter values are sent as SQL parameters, so EF Core and the database reuse one cached plan per filter shape.
 

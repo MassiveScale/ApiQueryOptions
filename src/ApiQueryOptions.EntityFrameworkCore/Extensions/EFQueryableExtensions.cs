@@ -1,6 +1,7 @@
 using System.Reflection;
 using ApiQueryOptions;
 using ApiQueryOptions.Exceptions;
+using ApiQueryOptions.Extensions;
 using ApiQueryOptions.Options;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,8 +9,8 @@ namespace ApiQueryOptions.EntityFrameworkCore.Extensions;
 
 /// <summary>
 /// EF Core-specific IQueryable&lt;T&gt; extension methods.
-/// All methods compose deferred expression trees; nothing is enumerated until
-/// the caller calls <c>.ToListAsync()</c> or similar.
+/// <see cref="ApplyExpand{T}"/> composes a deferred expression tree; nothing is enumerated until
+/// the caller calls <c>.ToListAsync()</c> or similar. <see cref="CountAsync{T}"/> runs a count query.
 /// The core <c>IQueryableExtensions.Apply</c> calls <see cref="ApplyExpand{T}"/> automatically when
 /// this package is installed, so most callers never need to import this namespace.
 /// </summary>
@@ -46,6 +47,20 @@ public static class EFQueryableExtensions
 
         return query;
     }
+
+    /// <summary>
+    /// Asynchronously counts every item that matches the <c>$filter</c> in <paramref name="options"/>,
+    /// across all pages. <c>$orderby</c>, <c>$skip</c>, <c>$top</c>, and <c>$expand</c> are ignored,
+    /// so the result is the total to pass to <see cref="PagedResponse.Create{T}"/> as <c>totalCount</c>.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">When <paramref name="options"/> is <c>null</c>.</exception>
+    /// <exception cref="InvalidQueryOptionException">When the filter cannot be applied to <typeparamref name="T"/>.</exception>
+    /// <exception cref="OperationCanceledException">When <paramref name="cancellationToken"/> is canceled.</exception>
+    public static Task<int> CountAsync<T>(
+        this IQueryable<T> query,
+        ApiQueryOptions<T> options,
+        CancellationToken cancellationToken = default) =>
+        query.ApplyFilter(options).CountAsync(cancellationToken);
 
     /// <summary>
     /// Validates each segment of <paramref name="path"/> against <paramref name="rootType"/> and
