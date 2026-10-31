@@ -200,7 +200,7 @@ query = query.ApplySkip(options.Skip!, settings);
 query = query.ApplyTop(options.Top!, settings);
 ```
 
-\* `$expand` is applied as `.Include()` calls when the [ApiQueryOptions.EntityFrameworkCore](https://www.nuget.org/packages/ApiQueryOptions.EntityFrameworkCore) package is installed, and ignored otherwise.
+\* `$expand` is applied as `.Include()` calls when the [ApiQueryOptions.EntityFrameworkCore](https://www.nuget.org/packages/ApiQueryOptions.EntityFrameworkCore) package is installed and the query is a query of entities, and ignored otherwise. When you project to a DTO, load related data in the projection and check `options.Expands("PropertyName")`, which returns `true` when the client asked for that property and `false` when there is no `$expand`.
 
 ---
 

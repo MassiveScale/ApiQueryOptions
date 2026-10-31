@@ -148,6 +148,20 @@ public sealed class ApiQueryOptions<T>
     public TopQueryOption? Top { get; }
 
     /// <summary>
+    /// Returns <c>true</c> when <c>$expand</c> requests <paramref name="propertyPath"/>, and
+    /// <c>false</c> when it does not or <c>$expand</c> is absent or disabled.
+    /// See <see cref="ExpandQueryOption.Includes(string)"/> for the matching rules.
+    /// </summary>
+    /// <param name="propertyPath">A property name, or a dot-separated path such as <c>Orders.Items</c>.</param>
+    /// <exception cref="ArgumentException">When <paramref name="propertyPath"/> is <c>null</c>, empty, or white space.</exception>
+    public bool Expands(string propertyPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyPath);
+
+        return Expand?.Includes(propertyPath) ?? false;
+    }
+
+    /// <summary>
     /// Creates an <see cref="ApiQueryOptions{T}"/> from an <see cref="HttpRequest"/>.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types", Justification = "T is always required and meaningful at the call site; ApiQueryOptions<Product>.FromRequest(request) is the intended pattern.")]

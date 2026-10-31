@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>ApiQueryOptions</PackageId>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Description>Lightweight OData-style query parameter parsing (filter, expand, orderby, top, skip, skiptoken) for ASP.NET Core REST APIs with IQueryable&lt;T&gt; extension methods and model binding.</Description>
     <PackageTags>aspnetcore;odata;queryoptions;filter;rest;api</PackageTags>
   </PropertyGroup>

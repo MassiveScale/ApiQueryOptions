@@ -76,8 +76,11 @@ public static class IQueryableExtensions
     /// <c>$skip</c> is applied, the tie-breaker is appended as the last sort column unless
     /// <c>$orderby</c> already includes it.
     /// <c>Expand</c> is applied as EF Core <c>.Include()</c> calls when the
-    /// <c>ApiQueryOptions.EntityFrameworkCore</c> package is installed; no <c>using</c> for that
-    /// package is needed. Without it, or for value-type entities, <c>Expand</c> is ignored.
+    /// <c>ApiQueryOptions.EntityFrameworkCore</c> package is installed and <paramref name="query"/>
+    /// is a query of entities; no <c>using</c> for that package is needed. On a query projected to a
+    /// DTO, nothing is included and the projection is expected to load what
+    /// <see cref="ApiQueryOptions{T}.Expands(string)"/> reports as requested. Without the package,
+    /// or for value-type elements, <c>Expand</c> is ignored.
     /// </summary>
     /// <exception cref="InvalidQueryOptionException">
     /// When an option names an unknown property or cannot be applied to <typeparamref name="T"/>,

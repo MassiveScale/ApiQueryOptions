@@ -171,6 +171,20 @@ query = query.ApplyTop(options.Top!, options.Settings);
 
 Install the package and `Apply` turns `$expand` into `.Include()` calls. Nothing else changes in your code, and you don't need a `using` for the EF Core namespace. The whole pipeline translates to a single SQL query.
 
+`.Include()` is only used on a query of entities, such as `db.Orders.Where(...)`. When the query has already been projected to a DTO with `Select`, `Apply` includes nothing and applies the other options as usual, so your projection loads the related data. `options.Expands("Lines")` tells it whether the client asked for `Lines`:
+
+```csharp
+IQueryable<OrderDto> orders = db.Orders.Select(o => new OrderDto
+{
+    Id = o.Id,
+    Lines = options.Expands(nameof(OrderDto.Lines)) ? o.Lines.Select(l => l.Product.Name).ToList() : null,
+});
+
+List<OrderDto> page = await orders.Apply(options).ToListAsync();
+```
+
+On an entity query, every `$expand` path must be a navigation; on a projected query, it must be a property of the DTO. Anything else throws `InvalidQueryOptionException`. The [EF Core package README](src/ApiQueryOptions.EntityFrameworkCore/README.md) has the full rules.
+
 To apply only `$expand`, import the EF Core namespace:
 
 ```csharp
