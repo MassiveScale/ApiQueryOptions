@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [1.2.0] - YYYY-MM-DD
+
+### Added
+
+- **`options.Expands(propertyPath)`** on `ApiQueryOptions<T>` and **`Includes(propertyPath)`** on `ExpandQueryOption` — return whether `$expand` asked for a property, so a projection can load a related collection only when requested. Matching is case-insensitive, `$expand=lines.product` counts as asking for both `Lines` and `Lines.Product`, and `Expands` returns `false` when there is no `$expand`.
+
+### Changed
+
+- **`$expand` on projected queries** — `Apply` and `ApplyExpand` no longer throw EF Core's `InvalidOperationException` ("Cannot apply the 'Include' operation…") when the query has been projected with `Select`, to a DTO or to a related entity. They detect the projection, include nothing, and still apply `$filter`, `$orderby`, `$skip`, and `$top`. Each `$expand` path must still name a property of the projected type. `options.Expand` and `nextLink` keep the `$expand` the client sent. Entity queries are included as before.
+- **`$expand` validation on entity queries** — paths are checked against the navigations in the EF Core model instead of the CLR properties, including navigations on derived types and many-to-many navigations. A path that names a plain column, such as `$expand=Title`, now throws `InvalidQueryOptionException` while the query is built, instead of an `InvalidOperationException` from EF Core when it runs.
+
 ## [1.1.0] - YYYY-MM-DD
 
 ### Added

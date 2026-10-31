@@ -93,7 +93,7 @@ int total = await query.CountAsync(options, cancellationToken);
 
 `CountAsync(options)` applies only `$filter` and ignores `$orderby`, `$skip`, `$top`, and `$expand`, so it returns the total number of matching items rather than the size of the current page. It reads the filter from `options`, which a `$skiptoken` restores, so the total stays the same on every page.
 
-`Apply` runs filter, orderby, skip, and top, then appends `.Include()` calls for each path listed in `$expand`. The whole chain is deferred and translates to a single SQL round-trip. Filter values are sent as SQL parameters, so EF Core and the database reuse one cached plan per filter shape.
+`Apply` runs filter, orderby, skip, and top, then appends `.Include()` calls for each path listed in `$expand` when the query is a query of entities (see "Expand on projected queries" below for DTO projections). The whole chain is deferred and translates to a single SQL round-trip. Filter values are sent as SQL parameters, so EF Core and the database reuse one cached plan per filter shape.
 
 You can import both `ApiQueryOptions.Extensions` and `ApiQueryOptions.EntityFrameworkCore.Extensions` in the same file. There is only one `Apply`, so the call is never ambiguous.
 
@@ -114,7 +114,39 @@ This generates:
 .Include(o => o.Lines).ThenInclude(l => l.Product)
 ```
 
-Each segment is checked against the entity's public properties before `.Include()` is called, and names are matched in any case (`$expand=customer` works). A segment after a collection, such as `Product` in `Lines.Product`, is looked up on the collection's element type. An unknown segment throws `InvalidQueryOptionException` (a subclass of `ApiQueryOptionsException`), so a bad `$expand` can be returned as `400 Bad Request` like any other client error.
+Each segment is checked against the navigations in the EF Core model before `.Include()` is called, and names are matched in any case (`$expand=customer` works). Navigations declared on derived types and many-to-many navigations are found too. A segment that does not exist, or that names a plain column such as `Lines.Quantity`, throws `InvalidQueryOptionException` (a subclass of `ApiQueryOptionsException`), so a bad `$expand` can be returned as `400 Bad Request` like any other client error.
+
+---
+
+## Expand on projected queries
+
+`.Include()` only works on a query of entities straight from a `DbSet` (with `Where`, `OrderBy`, `AsNoTracking`, and similar operators on top). API responses are usually projected to a DTO first, and EF Core throws if `.Include()` is called after that `Select`. `Apply` checks for this itself:
+
+| Query passed to `Apply`                                              | What `$expand` does                                                                                                                                        |
+|----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| An entity query: `db.Orders`, `db.Orders.Where(...)`, `FromSql(...)` | Each path becomes `.Include()`.<br>A path that is not a navigation throws `InvalidQueryOptionException`                                                    |
+| A projected query: `db.Orders.Select(o => new OrderDto { ... })`     | Nothing is included; your projection loads what was asked for.<br>Each path must still name a property of the DTO, otherwise `InvalidQueryOptionException` |
+| A projection to a related entity: `db.Lines.Select(l => l.Order)`    | Treated as a projected query, because EF Core cannot include after it either                                                                               |
+| A query that is not EF Core, such as a list's `AsQueryable()`        | Nothing is included. Paths are checked against the properties of `T`                                                                                       |
+
+`$filter`, `$orderby`, `$skip`, and `$top` are applied either way, and `options.Expand` and `nextLink` keep the `$expand` the client sent. In the projection, call `options.Expands(...)` to load a related collection only when it was requested. EF Core evaluates the condition before it builds the SQL, so a collection that was not requested is never queried:
+
+```csharp
+ApiQueryOptions<OrderDto> options = ApiQueryOptions<OrderDto>.FromRequest(Request);
+
+IQueryable<OrderDto> orders = db.Orders.Select(o => new OrderDto
+{
+    Id = o.Id,
+    Status = o.Status,
+    Lines = options.Expands(nameof(OrderDto.Lines))
+        ? o.Lines.Select(l => new LineDto { Product = l.Product.Name, Quantity = l.Quantity }).ToList()
+        : null,
+});
+
+List<OrderDto> page = await orders.Apply(options).ToListAsync(cancellationToken);
+```
+
+`Expands` is case-insensitive, returns `false` when there is no `$expand`, and also returns `true` for the start of a longer path: `$expand=lines.product` expands both `Lines` and `Lines.Product`. The same check is available as `options.Expand.Includes(...)` on a non-null `ExpandQueryOption`.
 
 ---
 
