@@ -188,22 +188,19 @@ public static class EFQueryableExtensions
     {
         INavigationBase? caseInsensitiveMatch = null;
 
-        foreach (IEntityType type in entityType.GetDerivedTypesInclusive())
+        IEnumerable<INavigationBase> navigations = entityType.GetDerivedTypesInclusive()
+            .SelectMany(type => type.GetNavigations().Cast<INavigationBase>().Concat(type.GetSkipNavigations()));
+
+        foreach (INavigationBase navigation in navigations)
         {
-            IEnumerable<INavigationBase> navigations = type.GetNavigations().Cast<INavigationBase>()
-                .Concat(type.GetSkipNavigations());
-
-            foreach (INavigationBase navigation in navigations)
+            if (string.Equals(navigation.Name, name, StringComparison.Ordinal))
             {
-                if (string.Equals(navigation.Name, name, StringComparison.Ordinal))
-                {
-                    return navigation;
-                }
+                return navigation;
+            }
 
-                if (caseInsensitiveMatch is null && string.Equals(navigation.Name, name, StringComparison.OrdinalIgnoreCase))
-                {
-                    caseInsensitiveMatch = navigation;
-                }
+            if (caseInsensitiveMatch is null && string.Equals(navigation.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                caseInsensitiveMatch = navigation;
             }
         }
 
